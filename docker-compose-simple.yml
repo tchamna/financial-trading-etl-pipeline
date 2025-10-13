@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # ================================
+  # Simple Test Services
+  # ================================
+  
+  # PostgreSQL Database for Airflow
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_db_volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    restart: always
+    networks:
+      - financial_network
+
+  # Redis for Airflow
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 30s
+      retries: 50
+      start_period: 30s
+    restart: always
+    networks:
+      - financial_network
+
+  # Jupyter Lab for Data Analysis
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=financial_pipeline_2024
+    volumes:
+      - ./:/home/jovyan/work
+      - ./spark:/home/jovyan/spark_jobs
+    command: start-notebook.sh --NotebookApp.token='financial_pipeline_2024'
+    networks:
+      - financial_network
+
+  # Simple Airflow Webserver (Standalone)
+  airflow-standalone:
+    image: apache/airflow:2.8.0
+    ports:
+      - "8080:8080"
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=SequentialExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=sqlite:////opt/airflow/airflow.db
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=false
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__EXPOSE_CONFIG=true
+      - AIRFLOW_CONN_POSTGRES_DEFAULT=postgres://airflow:airflow@postgres:5432/airflow
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./spark:/opt/spark_jobs
+      - ./.env:/opt/airflow/.env
+    command: >
+      bash -c "
+        airflow db init &&
+        airflow users create --username admin --password admin123 --firstname Admin --lastname User --role Admin --email admin@example.com &&
+        airflow standalone
+      "
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - financial_network
+
+volumes:
+  postgres_db_volume:
+
+networks:
+  financial_network:
+    driver: bridge

@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  financial-db:
+    image: postgres:17
+    container_name: financial_trading_db_public
+    environment:
+      POSTGRES_DB: financial_trading_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: deusiar
+    ports:
+      - "5433:5432"  # Different port to avoid conflicts
+    volumes:
+      - financial_db_data:/var/lib/postgresql/data
+      - ./financial_trading_db_dump_20251013_144225.sql:/docker-entrypoint-initdb.d/01-init.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d financial_trading_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: pgAdmin for web-based database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: financial_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "8080:80"
+    depends_on:
+      - financial-db
+    restart: unless-stopped
+
+  # Optional: Jupyter Lab for data analysis
+  jupyter:
+    image: jupyter/datascience-notebook:latest
+    container_name: financial_jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./csv_export_20251013_144226:/home/jovyan/work/data
+    command: start-notebook.sh --NotebookApp.token='' --NotebookApp.password=''
+    restart: unless-stopped
+
+volumes:
+  financial_db_data:
+
+networks:
+  default:
+    name: financial_trading_network

@@ -1,0 +1,252 @@
+# 🏦 Financial Trading ETL Pipeline - .gitignore
+# =================================================
+# Professional .gitignore for financial data pipeline
+# Excludes sensitive data, logs, and temporary files
+
+# ================================
+# 🔐 SENSITIVE & SECURITY FILES
+# ================================
+.env                               # Environment variables (API keys, passwords)
+.env.local
+.env.production
+.env.staging
+*.key                             # Private keys
+*.pem                             # SSL certificates
+credentials.json                  # Service account credentials
+secrets/                          # Secrets directory
+config/secrets/                   # Nested secrets
+**/secrets/**
+
+# ================================
+# 💾 FINANCIAL DATA & EXPORTS
+# ================================
+*.csv                             # Data exports
+*.json                            # API responses & exports
+*.sql                             # Database dumps
+*.parquet                         # Parquet data files
+*.pickle                          # Pickled data
+*.xlsx                            # Excel exports
+data/                             # Data directory
+exports/                          # Export directory
+csv_export_*/                     # Timestamped exports
+dumps/                            # Database dumps
+backups/                          # Backup files
+
+# ================================
+# 📊 AIRFLOW & WORKFLOW FILES
+# ================================
+airflow.cfg                       # Airflow configuration
+logs/                             # Airflow logs
+dags/logs/                        # DAG logs
+plugins/                          # Custom plugins (if sensitive)
+airflow-webserver.pid             # Process files
+standalone_admin_password.txt     # Admin credentials
+airflow.db                        # SQLite database
+
+# ================================
+# 🐍 PYTHON ENVIRONMENT
+# ================================
+__pycache__/                      # Python cache
+*.py[cod]                         # Compiled Python
+*$py.class                        # Class files
+*.so                              # Shared objects
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+.conda/
+
+# ================================
+# 🔧 DEVELOPMENT TOOLS
+# ================================
+.pytest_cache/                    # Pytest cache
+.coverage                         # Coverage files
+htmlcov/                          # Coverage reports
+.tox/                            # Tox testing
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb                          # Notebook files (if containing sensitive data)
+
+# IDE files
+.vscode/                         # VS Code settings
+.idea/                           # PyCharm/IntelliJ
+*.swp                            # Vim swap files
+*.swo
+*~
+
+# ================================
+# ☁️ CLOUD & INFRASTRUCTURE
+# ================================
+.aws/                            # AWS credentials
+.boto                            # Boto config
+aws-credentials.txt
+terraform.tfstate*               # Terraform state
+*.terraform/                     # Terraform cache
+.terraform.lock.hcl
+
+# Docker
+.dockerignore
+docker-compose.override.yml      # Local overrides
+
+# ================================
+# 📋 LOGS & MONITORING
+# ================================
+*.log                            # Log files
+logs/                            # Log directories
+*.log.*                          # Rotated logs
+audit.log
+error.log
+debug.log
+application.log
+scheduler.log
+webserver.log
+
+# Monitoring data
+metrics/
+monitoring/
+*.pid
+
+# ================================
+# 🗄️ DATABASE FILES
+# ================================
+*.db                             # SQLite databases
+*.sqlite
+*.sqlite3
+metastore_db/                    # Hive metastore
+derby.log                        # Derby database logs
+
+# ================================
+# 📦 PACKAGE MANAGERS
+# ================================
+node_modules/                    # Node.js (if using)
+package-lock.json
+yarn.lock
+Pipfile.lock                     # Pipenv lock file
+
+# ================================
+# 🏗️ BUILD ARTIFACTS
+# ================================
+target/                          # Maven/Gradle builds
+*.jar                            # Java archives
+*.war
+*.ear
+*.class
+
+# Spark
+spark-warehouse/                 # Spark warehouse
+metastore_db/                    # Spark metastore
+derby.log
+
+# ================================
+# 💻 OS & SYSTEM FILES
+# ================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ================================
+# 🧪 TESTING & TEMPORARY FILES
+# ================================
+test_results/                    # Test outputs
+temp/                           # Temporary files
+tmp/                            # Temporary directory
+.tmp/
+*.tmp
+*.temp
+test_*.json                     # Test result files
+api_test_results_*.json         # API test outputs
+
+# ================================
+# 📊 FINANCIAL ANALYSIS FILES
+# ================================
+portfolio_analysis/             # Analysis outputs
+backtesting_results/           # Backtest results
+risk_reports/                  # Risk analysis
+performance_metrics/           # Performance data
+market_data_cache/            # Cached market data
+
+# ================================
+# 🚀 DEPLOYMENT ARTIFACTS
+# ================================
+deployment/                    # Deployment configs
+k8s-configs/                  # Kubernetes configs (if sensitive)
+helm-charts/values-prod.yaml  # Production Helm values
+*.zip                         # Deployment packages
+*.tar.gz                      # Archives
+
+# ================================
+# 📝 DOCUMENTATION BUILDS
+# ================================
+docs/_build/                  # Sphinx builds
+site/                         # MkDocs builds
+.mkdocs/
+
+# ================================
+# 🔍 ADDITIONAL PATTERNS
+# ================================
+*.bak                         # Backup files
+*.orig                        # Original files
+*.rej                         # Rejected patches
+.vscode-test/                # VS Code testing
+.nyc_output/                 # NYC coverage
+
+# Custom application files
+financial_reports/
+market_analysis/
+trading_signals/
