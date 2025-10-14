@@ -13,11 +13,17 @@ numpy==1.25.2                      # Numerical computing
 pyarrow==14.0.1                    # Columnar data format
 
 # ================================
-# ☁️ CLOUD & INFRASTRUCTURE  
+# ☁️ AWS CLOUD & DATA LAKE
 # ================================
-boto3==1.34.0                      # AWS SDK
+boto3==1.34.0                      # AWS SDK for S3, EMR, etc
+botocore==1.34.0                   # AWS core functionality
+s3fs==2023.12.2                    # S3 filesystem interface
 apache-airflow-providers-amazon==8.17.0  # AWS Airflow integration
-snowflake-connector-python==3.6.0  # Data warehouse
+
+# ================================
+# 🏗️ DATA WAREHOUSE & CACHE
+# ================================
+snowflake-connector-python==3.6.0  # Snowflake data warehouse
 redis==5.0.1                       # Caching & message broker
 
 # ================================

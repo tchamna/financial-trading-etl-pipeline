@@ -21,13 +21,20 @@ config/secrets/                   # Nested secrets
 # 💾 FINANCIAL DATA & EXPORTS
 # ================================
 *.csv                             # Data exports
-*.json                            # API responses & exports
 *.sql                             # Database dumps
 *.parquet                         # Parquet data files
 *.pickle                          # Pickled data
 *.xlsx                            # Excel exports
 data/                             # Data directory
 exports/                          # Export directory
+
+# ================================
+# ⚙️  CONFIGURATION FILES
+# ================================
+config.json                       # Production configuration (contains secrets)
+# Keep these files:
+# config.example.json             # Example configuration template
+# config.py                       # Configuration management module
 csv_export_*/                     # Timestamped exports
 dumps/                            # Database dumps
 backups/                          # Backup files

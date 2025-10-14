@@ -14,6 +14,8 @@ This DAG orchestrates real-time financial market data processing including:
 
 import logging
 import boto3
+import sys
+import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.utils.dates import days_ago
@@ -27,30 +29,39 @@ from airflow.providers.snowflake.operators.snowflake import SnowflakeOperator
 from airflow.providers.http.sensors.http import HttpSensor
 from airflow.operators.email_operator import EmailOperator
 
+# Add parent directory to path for configuration import
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import configuration
+from config import get_config
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Default arguments
+# Load configuration
+config = get_config()
+
+# Default arguments from configuration
 default_args = {
     "owner": "DataEngineering",
     "start_date": days_ago(1),
-    "email_on_failure": True,
-    "email_on_retry": False,
-    "retries": 2,
-    "retry_delay": timedelta(minutes=5),
-    "email": ["tchamna@gmail.com"]  # Add  email for notifications
+    "email_on_failure": config.airflow.email_on_failure,
+    "email_on_retry": config.airflow.email_on_retry,
+    "retries": config.airflow.retries,
+    "retry_delay": timedelta(minutes=config.airflow.retry_delay_minutes),
+    "email": config.airflow.email_list
 }
 
-# Define the DAG
+# Define the DAG with configuration
 dag = DAG(
-    dag_id="FINANCIAL_TRADING_ETL_PIPELINE",
+    dag_id=config.airflow.dag_id.upper(),
     default_args=default_args,
-    description="Real-time financial market data ETL pipeline",
-    schedule_interval=timedelta(hours=1),  # Run hourly during market hours
-    catchup=False,
-    max_active_runs=1,
-    tags=["finance", "trading", "real-time", "analytics"]
+    description="Configurable real-time financial market data ETL pipeline",
+    schedule_interval=config.airflow.schedule_interval,
+    catchup=config.airflow.catchup,
+    max_active_runs=config.airflow.max_active_runs,
+    tags=["finance", "trading", "real-time", "analytics", "configurable"]
 )
 
 # EMR Cluster configuration for financial data processing

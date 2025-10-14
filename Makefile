@@ -28,9 +28,10 @@ install-dev: ## Install development dependencies
 setup: ## Complete project setup
 	@echo "🏗️ Setting up Financial Trading ETL Pipeline..."
 	cp .env.example .env
-	@echo "✅ Created .env file - please update with your credentials"
+	cp config.example.json config.json
+	@echo "✅ Created .env and config.json files - please update with your credentials"
 	make install-dev
-	@echo "✅ Setup complete! Edit .env and run 'make test' to verify"
+	@echo "✅ Setup complete! Edit config.json and run 'make config-validate' to verify"
 
 # ================================
 # 🧪 TESTING & VALIDATION
@@ -46,6 +47,26 @@ test-quick: ## Run quick tests only
 test-pipeline: ## Test the full ETL pipeline
 	@echo "🔄 Testing ETL pipeline..."
 	python scripts/integration_test.py
+
+# ================================
+# ⚙️ CONFIGURATION MANAGEMENT
+# ================================
+config-validate: ## Validate configuration
+	@echo "🔍 Validating configuration..."
+	python config.py validate
+
+config-summary: ## Show configuration summary
+	@echo "📋 Configuration summary:"
+	python config.py summary
+
+config-save: ## Save current configuration to backup
+	@echo "💾 Saving configuration backup..."
+	python config.py save config-backup-$(shell date +%Y%m%d-%H%M%S).json
+
+config-template: ## Create config.json from template
+	@echo "📄 Creating config.json from template..."
+	cp config.example.json config.json
+	@echo "✅ Please edit config.json with your settings"
 
 # ================================
 # 🔧 CODE QUALITY
@@ -88,7 +109,7 @@ docker-clean: ## Clean Docker resources
 # ================================
 # 📊 DATA OPERATIONS
 # ================================
-extract: ## Extract live financial data
+extract: ## Extract live financial data to DB and S3
 	@echo "📥 Extracting live financial data..."
 	python scripts/real_database_pipeline.py
 
@@ -99,6 +120,14 @@ validate-data: ## Validate database contents
 backup-db: ## Create database backup
 	@echo "💾 Creating database backup..."
 	python scripts/create_database_dump.py
+
+test-s3: ## Test AWS S3 integration
+	@echo "☁️ Testing S3 integration..."
+	python scripts/test_s3_integration.py
+
+upload-s3: ## Upload sample data to S3
+	@echo "📤 Uploading data to S3..."
+	python scripts/s3_data_uploader.py
 
 # ================================
 # 🚀 AIRFLOW OPERATIONS

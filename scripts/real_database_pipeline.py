@@ -1,38 +1,79 @@
 #!/usr/bin/env python3
 """
-Live Data Pipeline for Real PostgreSQL Database
+Live Data Pipeline for Real PostgreSQL Database + AWS S3
 Extracts live financial data and stores it in your real PostgreSQL database
+and uploads to AWS S3 for cloud storage and analytics
+
+Author: Shck Tchamna (tchamna@gmail.com)
+Enhanced with AWS S3 integration for cloud-native ETL pipeline
 """
 
 import os
+import sys
 import requests
 import pandas as pd
 import psycopg2
 import time
+import json
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import configuration
+from config import get_config
+
+# Import our S3 uploader
+try:
+    from s3_data_uploader import create_s3_uploader_from_env
+    S3_AVAILABLE = True
+except ImportError:
+    print("⚠️  S3 uploader not available - will skip S3 upload")
+    S3_AVAILABLE = False
+
 class RealDatabasePipeline:
-    """Pipeline that stores data in your real PostgreSQL database"""
+    """Pipeline that stores data in your real PostgreSQL database and AWS S3"""
     
     def __init__(self):
         load_dotenv()
         
-        # Real database configuration
+        # Load configuration
+        self.config = get_config()
+        
+        # Real database configuration from config
         self.db_config = {
-            'host': os.getenv('DB_HOST', 'localhost'),
-            'port': int(os.getenv('DB_PORT', 5432)),
-            'database': os.getenv('DB_DATABASE', 'financial_trading_db'),
-            'user': os.getenv('DB_USER', 'postgres'),
-            'password': os.getenv('DB_PASSWORD')
+            'host': self.config.database.host,
+            'port': self.config.database.port,
+            'database': self.config.database.database,
+            'user': self.config.database.username,
+            'password': self.config.database.password
         }
         
-        self.alpha_vantage_key = os.getenv('ALPHA_VANTAGE_API_KEY')
+        self.alpha_vantage_key = self.config.api.alpha_vantage_api_key
         
-        print("📊 REAL DATABASE PIPELINE - LIVE DATA EXTRACTION")
+        # Initialize S3 uploader if enabled and available
+        self.s3_uploader = None
+        if self.config.s3.enabled and S3_AVAILABLE:
+            try:
+                self.s3_uploader = create_s3_uploader_from_env()
+                s3_status = f"✅ Connected to {self.config.s3.bucket_name}"
+            except Exception as e:
+                print(f"⚠️  S3 connection failed: {e}")
+                s3_status = "❌ Connection Failed"
+        elif not self.config.s3.enabled:
+            s3_status = "⚠️  S3 Disabled in Configuration"
+        else:
+            s3_status = "❌ S3 Module Not Available"
+        
+        print("📊 CONFIGURABLE FINANCIAL ETL PIPELINE - LIVE DATA EXTRACTION")
         print("=" * 70)
         print(f"🗄️  Database: {self.db_config['database']} @ {self.db_config['host']}:{self.db_config['port']}")
         print(f"📁 Physical Location: C:/Program Files/PostgreSQL/17/data/")
+        print(f"☁️  AWS S3: {s3_status}")
+        print(f"📋 Stock Symbols: {', '.join(self.config.processing.stock_symbols[:5])}{'...' if len(self.config.processing.stock_symbols) > 5 else ''}")
+        print(f"🪙 Crypto Symbols: {', '.join(self.config.processing.crypto_symbols[:3])}{'...' if len(self.config.processing.crypto_symbols) > 3 else ''}")
+        print(f"⏱️  Collection Interval: {self.config.processing.collection_interval_seconds} seconds")
         print()
     
     def verify_database_connection(self):
@@ -81,7 +122,7 @@ class RealDatabasePipeline:
         print("\n📈 Extracting Live Stock Data...")
         print("-" * 50)
         
-        symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA']
+        symbols = self.config.processing.stock_symbols
         stock_records = []
         
         for symbol in symbols:
@@ -136,13 +177,13 @@ class RealDatabasePipeline:
         print("-" * 50)
         
         try:
-            # CoinGecko API call
-            url = "https://api.coingecko.com/api/v3/coins/markets"
+            # CoinGecko API call with configured symbols
+            url = self.config.api.coingecko_base_url + "/coins/markets"
             params = {
                 'vs_currency': 'usd',
-                'ids': 'bitcoin,ethereum,cardano,solana,chainlink,polygon,avalanche-2',
+                'ids': ','.join(self.config.processing.crypto_symbols),
                 'order': 'market_cap_desc',
-                'per_page': 10,
+                'per_page': len(self.config.processing.crypto_symbols),
                 'page': 1,
                 'sparkline': False,
                 'price_change_percentage': '24h'
@@ -231,6 +272,19 @@ class RealDatabasePipeline:
             for symbol, price, volume, timestamp in stored_data:
                 print(f"   📈 {symbol}: ${price:.2f} | Vol: {volume:,} | {timestamp}")
             
+            # Upload to S3 if available
+            if self.s3_uploader and stock_records:
+                try:
+                    print("\n☁️  Uploading stock data to AWS S3...")
+                    s3_path = self.s3_uploader.upload_stock_data(
+                        stock_records, 
+                        data_type='processed',
+                        compress=True
+                    )
+                    print(f"✅ Stock data uploaded to S3: {s3_path}")
+                except Exception as e:
+                    print(f"⚠️  S3 upload failed: {e}")
+            
         except Exception as e:
             print(f"❌ Error storing stock data: {e}")
     
@@ -290,6 +344,19 @@ class RealDatabasePipeline:
                 print(f"   🪙 {symbol}: ${price:,.2f} ({change:+.2f}%) | MCap: ${mcap:,}")
             
             print(f"\n📊 Total crypto market cap stored: ${total_market_cap:,}")
+            
+            # Upload to S3 if available
+            if self.s3_uploader and crypto_records:
+                try:
+                    print("\n☁️  Uploading crypto data to AWS S3...")
+                    s3_path = self.s3_uploader.upload_crypto_data(
+                        crypto_records,
+                        data_type='processed', 
+                        compress=True
+                    )
+                    print(f"✅ Crypto data uploaded to S3: {s3_path}")
+                except Exception as e:
+                    print(f"⚠️  S3 upload failed: {e}")
             
         except Exception as e:
             print(f"❌ Error storing crypto data: {e}")
@@ -391,11 +458,28 @@ class RealDatabasePipeline:
         return True
 
 if __name__ == "__main__":
+    # Load and validate configuration
+    config = get_config()
+    
+    print("🔍 Validating Configuration...")
+    issues = config.validate()
+    if issues:
+        print("❌ Configuration Issues Found:")
+        for issue in issues:
+            print(f"   - {issue}")
+        print("\n💡 Please check your config.json file or environment variables")
+        exit(1)
+    
+    print("✅ Configuration validated successfully")
+    print(config.get_summary())
+    
     pipeline = RealDatabasePipeline()
     success = pipeline.run_complete_pipeline()
     
     if success:
-        print("\n🚀 Your real PostgreSQL database now contains live financial data!")
-        print("💻 Connect with: psql -h localhost -p 5432 -U postgres -d financial_trading_db")
+        print("\n🚀 Your configurable pipeline has completed successfully!")
+        print(f"💻 Connect with: psql -h {config.database.host} -p {config.database.port} -U {config.database.username} -d {config.database.database}")
+        if config.s3.enabled:
+            print(f"☁️  Data also available in S3 bucket: {config.s3.bucket_name}")
     else:
         print("\n❌ Pipeline failed. Check your configuration.")

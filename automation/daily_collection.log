@@ -1,0 +1,61 @@
+2025-10-13 21:35:45,559 - INFO - === Starting Daily Data Collection Pipeline ===
+2025-10-13 21:35:45,559 - INFO - Starting data collection for 2025-10-12
+2025-10-13 21:35:45,559 - INFO - Collecting data for symbols: BTC, ETH, SOL, ADA, DOT, LINK, UNI, AVAX
+2025-10-13 21:36:52,192 - INFO - Collected 0 minute records
+2025-10-13 21:36:52,192 - INFO - Data saved to data\crypto_minute_data_20251012.json
+2025-10-13 21:36:52,194 - INFO - Starting S3 upload...
+2025-10-13 21:36:53,877 - INFO - S3 upload completed successfully
+2025-10-13 21:36:53,878 - INFO - Starting technical analysis...
+2025-10-13 21:36:53,916 - ERROR - Pipeline failed: list indices must be integers or slices, not str
+2025-10-13 21:39:17,363 - INFO - === Starting Daily Data Collection Pipeline ===
+2025-10-13 21:39:17,363 - INFO - Starting data collection for 2025-10-12
+2025-10-13 21:39:17,363 - INFO - Collecting data for symbols: BTC, ETH, SOL, ADA, DOT, LINK, UNI, AVAX
+2025-10-13 21:39:46,207 - INFO - Collected 0 minute records
+2025-10-13 21:39:46,209 - INFO - Data saved to data\crypto_minute_data_20251012.json
+2025-10-13 21:39:46,214 - INFO - Starting S3 upload...
+2025-10-13 21:39:53,051 - INFO - S3 upload completed successfully
+2025-10-13 21:39:53,054 - INFO - Starting technical analysis...
+2025-10-13 21:39:53,211 - WARNING - Technical analysis failed: list indices must be integers or slices, not str
+2025-10-13 21:39:53,213 - INFO - Skipping analysis step - data collection and S3 upload were successful
+2025-10-13 21:39:53,226 - INFO - === Pipeline completed successfully in 0:00:35.861444 ===
+2025-10-13 21:45:07,255 - INFO - === Starting Daily Data Collection Pipeline ===
+2025-10-13 21:45:07,255 - INFO - Starting data collection for 2025-10-12
+2025-10-13 21:45:07,256 - INFO - Collecting data for symbols: BTC, ETH, SOL, ADA, DOT, LINK, UNI, AVAX
+2025-10-13 21:45:23,987 - INFO - Collected 0 minute records
+2025-10-13 21:45:23,987 - INFO - Data saved to data\crypto_minute_data_20251012.json
+2025-10-13 21:45:23,988 - INFO - Starting S3 upload...
+2025-10-13 21:45:25,658 - INFO - S3 upload completed successfully
+2025-10-13 21:45:25,658 - INFO - Starting technical analysis...
+2025-10-13 21:45:25,674 - WARNING - Technical analysis failed: list indices must be integers or slices, not str
+2025-10-13 21:45:25,674 - INFO - Skipping analysis step - data collection and S3 upload were successful
+2025-10-13 21:45:25,676 - INFO - === Pipeline completed successfully in 0:00:18.420749 ===
+2025-10-13 21:52:03,740 - INFO - === Starting Daily Data Collection Pipeline ===
+2025-10-13 21:52:03,741 - INFO - Starting data collection for 2025-10-12
+2025-10-13 21:52:03,742 - INFO - Collecting data for symbols: BTC, ETH, SOL, ADA, DOT, LINK, UNI, AVAX
+2025-10-13 21:52:24,287 - INFO - Collected 0 minute records
+2025-10-13 21:52:24,288 - INFO - Data saved to data\crypto_minute_data_20251012.json
+2025-10-13 21:52:24,288 - INFO - Starting data storage management...
+2025-10-13 21:52:27,849 - INFO - Data storage completed successfully
+2025-10-13 21:52:27,849 - INFO - Local storage: Enabled (keeping 7 days)
+2025-10-13 21:52:27,850 - INFO - S3 storage: Completed
+2025-10-13 21:52:27,850 - INFO -   - JSON format uploaded
+2025-10-13 21:52:27,850 - INFO -   - Parquet format uploaded
+2025-10-13 21:52:27,851 - INFO - Starting technical analysis...
+2025-10-13 21:52:27,872 - WARNING - Technical analysis failed: 'SimpleMinuteAnalyzer' object has no attribute 'comprehensive_analysis'
+2025-10-13 21:52:27,872 - INFO - Skipping analysis step - data collection and S3 upload were successful
+2025-10-13 21:52:27,874 - INFO - === Pipeline completed successfully in 0:00:24.132404 ===
+2025-10-13 21:59:23,088 - INFO - === Starting Daily Data Collection Pipeline ===
+2025-10-13 21:59:23,089 - INFO - Starting data collection for 2025-10-12
+2025-10-13 21:59:23,089 - INFO - Collecting data for symbols: BTC, ETH, SOL, ADA, DOT, LINK, UNI, AVAX
+2025-10-13 21:59:50,986 - INFO - Collected 0 minute records
+2025-10-13 21:59:50,987 - INFO - Data saved to data\crypto_minute_data_20251012.json
+2025-10-13 21:59:50,988 - INFO - Starting data storage management...
+2025-10-13 21:59:52,759 - INFO - Data storage completed successfully
+2025-10-13 21:59:52,760 - INFO - Local storage: Enabled (keeping 7 days)
+2025-10-13 21:59:52,760 - INFO - S3 storage: Completed
+2025-10-13 21:59:52,761 - INFO -   - JSON format uploaded
+2025-10-13 21:59:52,761 - INFO -   - Parquet format uploaded
+2025-10-13 21:59:52,762 - INFO - Starting technical analysis...
+2025-10-13 21:59:52,785 - WARNING - Technical analysis failed: 'SimpleMinuteAnalyzer' object has no attribute 'comprehensive_analysis'
+2025-10-13 21:59:52,785 - INFO - Skipping analysis step - data collection and S3 upload were successful
+2025-10-13 21:59:52,787 - INFO - === Pipeline completed successfully in 0:00:29.699287 ===
