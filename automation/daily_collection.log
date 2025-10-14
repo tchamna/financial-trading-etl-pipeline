@@ -59,3 +59,15 @@
 2025-10-13 21:59:52,785 - WARNING - Technical analysis failed: 'SimpleMinuteAnalyzer' object has no attribute 'comprehensive_analysis'
 2025-10-13 21:59:52,785 - INFO - Skipping analysis step - data collection and S3 upload were successful
 2025-10-13 21:59:52,787 - INFO - === Pipeline completed successfully in 0:00:29.699287 ===
+2025-10-13 23:34:14,080 - INFO - === Starting Daily Data Collection Pipeline ===
+2025-10-13 23:34:14,080 - INFO - Starting data collection for 2025-10-12
+2025-10-13 23:34:14,080 - INFO - Collecting data for symbols: BTC, ETH, SOL, ADA, DOT, LINK, UNI, AVAX
+2025-10-13 23:37:54,862 - INFO - Collected 0 minute records
+2025-10-13 23:37:54,863 - INFO - Data saved to data\crypto_minute_data_20251012.json
+2025-10-13 23:37:54,865 - INFO - Starting data storage management...
+2025-10-13 23:37:57,756 - ERROR - Data storage failed
+2025-10-13 23:37:57,757 - INFO - Starting technical analysis...
+2025-10-13 23:37:57,816 - WARNING - Technical analysis failed: 'SimpleMinuteAnalyzer' object has no attribute 'comprehensive_analysis'
+2025-10-13 23:37:57,816 - INFO - Skipping analysis step - data collection and S3 upload were successful
+2025-10-13 23:37:57,821 - INFO - === Pipeline completed successfully in 0:03:43.741541 ===
+2025-10-13 23:37:57,822 - INFO - Daily pipeline completed successfully
