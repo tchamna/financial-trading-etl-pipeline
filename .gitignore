@@ -25,7 +25,10 @@ config/secrets/                   # Nested secrets
 *.parquet                         # Parquet data files
 *.pickle                          # Pickled data
 *.xlsx                            # Excel exports
-data/                             # Data directory
+data                              # Data directory
+data/                             # Data directory with slash
+data/*                            # All contents of data directory
+data/**                           # All contents recursively
 exports/                          # Export directory
 
 # ================================
@@ -266,3 +269,9 @@ site/                         # MkDocs builds
 financial_reports/
 market_analysis/
 trading_signals/
+
+# ================================
+# 📁 DATA DIRECTORY (EXPLICIT)
+# ================================
+
+data/
