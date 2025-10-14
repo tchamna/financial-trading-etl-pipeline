@@ -44,7 +44,7 @@ scikit-learn==1.3.2                # Machine learning models
 # ================================
 # 🗄️ DATABASE & STORAGE
 # ================================
-sqlalchemy==2.0.25                 # Database ORM
+sqlalchemy==1.4.49                 # Database ORM (compatible with Airflow 2.8)
 psycopg2-binary==2.9.9             # PostgreSQL driver
 snowflake-sqlalchemy==1.5.1        # Snowflake integration
 
@@ -67,7 +67,7 @@ structlog==23.2.0                  # Advanced logging
 # ================================
 python-dotenv==1.0.0               # Environment variables
 pyyaml==6.0.1                      # YAML configuration
-cryptography==41.0.8               # Security & encryption
+cryptography==41.0.7               # Security & encryption (latest supporting Python 3.11)
 
 # ================================
 # 🔧 UTILITIES & HELPERS

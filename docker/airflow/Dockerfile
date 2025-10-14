@@ -11,13 +11,21 @@ RUN apt-get update \
         curl \
         vim \
         less \
-        openjdk-11-jdk-headless \
+        openjdk-17-jdk-headless \
+    && mkdir -p /tmp/ta-lib-src \
+    && curl -sSL http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz -o /tmp/ta-lib.tar.gz \
+    && tar -xzf /tmp/ta-lib.tar.gz -C /tmp/ta-lib-src --strip-components=1 \
+    && cd /tmp/ta-lib-src \
+    && ./configure --prefix=/usr \
+    && make \
+    && make install \
+    && rm -rf /tmp/ta-lib-src /tmp/ta-lib.tar.gz \
     && apt-get autoremove -yqq --purge \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Set JAVA_HOME
-ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 # Switch back to airflow user
 USER airflow
@@ -38,7 +46,7 @@ RUN mkdir -p /opt/airflow/dags \
 COPY airflow.cfg /opt/airflow/airflow.cfg
 
 # Copy DAGs and Spark jobs
-COPY airflow_financial_pipeline.py /opt/airflow/dags/
+COPY dags/ /opt/airflow/dags/
 COPY spark/ /opt/spark_jobs/
 
 # Set working directory
