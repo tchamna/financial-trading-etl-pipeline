@@ -56,7 +56,7 @@ class SnowflakeLoader:
         # Snowflake configuration from config.json
         try:
             import json
-            with open('config.json', 'r') as f:
+            with open('config.json', 'r', encoding='utf-8') as f:
                 config_data = json.load(f)
                 self.snowflake_config = config_data.get('snowflake', {})
         except Exception as e:
@@ -103,16 +103,31 @@ class SnowflakeLoader:
             return False
         
         try:
+            # Connect without specifying warehouse initially
             self.connection = snowflake.connector.connect(
                 account=self.snowflake_config.get('account'),
                 user=self.snowflake_config.get('username'),
                 password=self.snowflake_config.get('password'),
-                role=self.snowflake_config.get('role', 'SYSADMIN'),
-                warehouse=self.warehouse,
-                database=self.database,
-                schema=self.schema
+                role=self.snowflake_config.get('role', 'SYSADMIN')
             )
             self.cursor = self.connection.cursor(DictCursor)
+            
+            # Create warehouse if it doesn't exist
+            try:
+                self.cursor.execute(f"""
+                    CREATE WAREHOUSE IF NOT EXISTS {self.warehouse}
+                    WITH WAREHOUSE_SIZE = 'X-SMALL'
+                    AUTO_SUSPEND = 60
+                    AUTO_RESUME = TRUE
+                    COMMENT = 'Warehouse for financial data processing'
+                """)
+                logger.info(f"✅ Warehouse {self.warehouse} created/verified")
+            except Exception as e:
+                logger.warning(f"Warehouse creation: {e}")
+            
+            # Now use the warehouse
+            self.cursor.execute(f"USE WAREHOUSE {self.warehouse}")
+            
             logger.info(f"✅ Connected to Snowflake: {self.database}.{self.schema}")
             return True
             
@@ -258,6 +273,34 @@ class SnowflakeLoader:
         
         self.execute_sql(sql)
         logger.info(f"✅ Crypto data table created/verified")
+        
+        # Create crypto minute data table for OHLCV intraday data
+        sql_minute = f"""
+        CREATE TABLE IF NOT EXISTS {self.database}.{self.schema}.CRYPTO_MINUTE_DATA (
+            -- Identification
+            symbol STRING NOT NULL,
+            timestamp TIMESTAMP_NTZ NOT NULL,
+            
+            -- OHLCV data
+            open DECIMAL(18,8),
+            high DECIMAL(18,8),
+            low DECIMAL(18,8),
+            close DECIMAL(18,8),
+            volume DECIMAL(20,2),
+            
+            -- Metadata
+            api_source STRING,
+            interval STRING,
+            load_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+            
+            -- Primary key
+            CONSTRAINT pk_crypto_minute_data PRIMARY KEY (symbol, timestamp)
+        )
+        COMMENT = 'Minute-level cryptocurrency OHLCV data'
+        """
+        
+        self.execute_sql(sql_minute)
+        logger.info(f"✅ Crypto minute data table created/verified")
     
     def load_parquet_from_local(self, file_path: str, table_name: str) -> int:
         """
@@ -350,6 +393,133 @@ class SnowflakeLoader:
             logger.error(f"Error loading from S3: {e}")
             return 0
     
+    def load_data_file(self, file_path: str) -> Dict[str, int]:
+        """
+        Load data from a specific JSON file
+        
+        Args:
+            file_path: Path to JSON file containing crypto minute data
+            
+        Returns:
+            Dictionary with load statistics
+        """
+        import json
+        from pathlib import Path
+        
+        stats = {
+            'stock_rows': 0,
+            'crypto_rows': 0,
+            'files_processed': 0,
+            'errors': 0
+        }
+        
+        try:
+            file_path = Path(file_path)
+            
+            if not file_path.exists():
+                logger.error(f"File not found: {file_path}")
+                stats['errors'] = 1
+                return stats
+            
+            # Load JSON data
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Handle both list and dict formats
+            if isinstance(data, list):
+                records = data
+            elif isinstance(data, dict) and 'data' in data:
+                records = data['data']
+            else:
+                records = [data]
+            
+            if not records:
+                logger.warning(f"No data found in {file_path}")
+                return stats
+            
+            # Determine if it's crypto or stock data based on filename or content
+            filename = file_path.name.lower()
+            if 'crypto' in filename or 'minute' in filename:
+                # Use CRYPTO_MINUTE_DATA table for OHLCV minute data
+                table_name = 'CRYPTO_MINUTE_DATA'
+            else:
+                table_name = 'STOCK_DATA'
+            
+            # Insert data
+            rows_inserted = 0
+            for i, record in enumerate(records):
+                try:
+                    # Skip non-dict records
+                    if not isinstance(record, dict):
+                        logger.warning(f"Skipping non-dict record at index {i}: {type(record)}")
+                        continue
+                    
+                    if table_name == 'CRYPTO_MINUTE_DATA':
+                        # Map JSON fields to crypto minute table columns
+                        row_data = {
+                            'symbol': record.get('symbol'),
+                            'timestamp': record.get('timestamp'),
+                            'open': float(record.get('open', 0)),
+                            'high': float(record.get('high', 0)),
+                            'low': float(record.get('low', 0)),
+                            'close': float(record.get('close', 0)),
+                            'volume': float(record.get('volume', 0)),
+                            'api_source': record.get('api_source'),
+                            'interval': record.get('interval')
+                        }
+                    else:
+                        # Map JSON fields to stock table columns
+                        row_data = {
+                            'symbol': record.get('symbol'),
+                            'timestamp': record.get('timestamp'),
+                            'open': float(record.get('open', 0)),
+                            'high': float(record.get('high', 0)),
+                            'low': float(record.get('low', 0)),
+                            'close': float(record.get('close', 0)),
+                            'volume': float(record.get('volume', 0))
+                        }
+                    
+                    # Prepare INSERT statement with proper Snowflake parameter binding
+                    columns = ', '.join(row_data.keys())
+                    placeholders = ', '.join([f'%({k})s' for k in row_data.keys()])
+                    sql = f"""
+                    INSERT INTO {self.database}.{self.schema}.{table_name}
+                    ({columns})
+                    VALUES ({placeholders})
+                    """
+                    
+                    self.cursor.execute(sql, row_data)
+                    rows_inserted += 1
+                    
+                    # Commit every 1000 rows to avoid transaction timeouts
+                    if rows_inserted % 1000 == 0:
+                        self.connection.commit()
+                        logger.info(f"   Loaded {rows_inserted} rows...")
+                    
+                except Exception as e:
+                    logger.error(f"Error inserting record at index {i}: {e}")
+                    if i < 3:  # Log first 3 failed records for debugging
+                        logger.error(f"   Record content: {record}")
+                    stats['errors'] += 1
+                    continue
+            
+            # Commit the transaction
+            self.connection.commit()
+            
+            if 'crypto' in filename:
+                stats['crypto_rows'] = rows_inserted
+            else:
+                stats['stock_rows'] = rows_inserted
+                
+            stats['files_processed'] = 1
+            logger.info(f"✅ Loaded {rows_inserted} rows from {file_path}")
+            
+        except Exception as e:
+            logger.error(f"Error loading file {file_path}: {e}")
+            stats['errors'] += 1
+        
+        return stats
+    
     def load_latest_data(self, hours: int = 24) -> Dict[str, int]:
         """
         Load latest data files from local storage or S3
@@ -414,21 +584,27 @@ class SnowflakeLoader:
             table_name: Table to deduplicate
         """
         try:
+            # Use Snowflake's MERGE to keep only the latest record for each symbol/timestamp combination
+            # Note: Since tables don't have updated_at, we'll just keep first occurrence
             sql = f"""
-            DELETE FROM {self.database}.{self.schema}.{table_name}
-            WHERE (symbol, timestamp) IN (
-                SELECT symbol, timestamp
-                FROM {self.database}.{self.schema}.{table_name}
-                GROUP BY symbol, timestamp
-                HAVING COUNT(*) > 1
-            )
-            AND ROWID NOT IN (
-                SELECT MIN(ROWID)
-                FROM {self.database}.{self.schema}.{table_name}
-                GROUP BY symbol, timestamp
-            )
+            CREATE OR REPLACE TEMPORARY TABLE {table_name}_temp AS
+            SELECT * FROM {self.database}.{self.schema}.{table_name}
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY symbol, timestamp ORDER BY timestamp) = 1
             """
             self.execute_sql(sql)
+            
+            # Replace original table with deduplicated data
+            sql2 = f"""
+            CREATE OR REPLACE TABLE {self.database}.{self.schema}.{table_name} LIKE {table_name}_temp
+            """
+            self.execute_sql(sql2)
+            
+            sql3 = f"""
+            INSERT INTO {self.database}.{self.schema}.{table_name}
+            SELECT * FROM {table_name}_temp
+            """
+            self.execute_sql(sql3)
+            
             logger.info(f"✅ Deduplicated {table_name}")
             
         except Exception as e:
@@ -498,6 +674,9 @@ def main():
             print("   2. Edit user_config.py and set ENABLE_SNOWFLAKE = True")
             return
         
+        # Use the database
+        loader.cursor.execute(f"USE DATABASE {loader.database}")
+        
         # Create schemas and tables
         print("\n🏗️  Creating schemas and tables...")
         loader.create_schema_if_not_exists()
@@ -506,7 +685,15 @@ def main():
         
         # Load data
         print("\n📥 Loading data...")
-        stats = loader.load_latest_data(hours=24)
+        import sys
+        if len(sys.argv) > 1:
+            # Load specific file from command line
+            file_path = sys.argv[1]
+            print(f"   Loading from: {file_path}")
+            stats = loader.load_data_file(file_path)
+        else:
+            # Load latest data from data directory
+            stats = loader.load_latest_data(hours=24)
         
         print("\n📊 Load Statistics:")
         print(f"   Stock rows loaded: {stats['stock_rows']:,}")

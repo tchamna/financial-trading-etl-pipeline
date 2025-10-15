@@ -142,7 +142,7 @@ AWS_REGION = "us-east-1"
 S3_STORAGE_CLASS = "STANDARD"
 
 # Snowflake Data Warehouse settings
-ENABLE_SNOWFLAKE = False           # Enable Snowflake data warehouse integration
+ENABLE_SNOWFLAKE = True            # Enable Snowflake data warehouse integration
 SNOWFLAKE_WAREHOUSE = "FINANCIAL_WH"  # Snowflake warehouse name
 SNOWFLAKE_DATABASE = "FINANCIAL_DB"   # Snowflake database name
 SNOWFLAKE_SCHEMA = "CORE"             # Snowflake schema name
