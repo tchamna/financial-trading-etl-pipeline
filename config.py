@@ -599,11 +599,8 @@ class PipelineConfig:
             if 'default_portfolio_name' in user_config:
                 self.processing.default_portfolio_name = user_config['default_portfolio_name']
             
-            if 'max_price_change_percent' in user_config:
-                self.processing.max_price_change_percent = user_config['max_price_change_percent']
-            
-            if 'enable_data_validation' in user_config:
-                self.processing.enable_data_validation = user_config['enable_data_validation']
+            if 'price_alert_threshold' in user_config:
+                self.processing.max_price_change_percent = user_config['price_alert_threshold']
             
             if 'api_requests_per_minute' in user_config:
                 self.api.requests_per_minute = user_config['api_requests_per_minute']
@@ -621,7 +618,6 @@ class PipelineConfig:
                 self.s3.storage_class = user_config['s3_storage_class']
             
             if 'collection_schedule' in user_config:
-                # Convert cron format to Airflow format
                 self.airflow.schedule_interval = user_config['collection_schedule']
             
             if 'enable_email_alerts' in user_config:
@@ -631,20 +627,20 @@ class PipelineConfig:
             if 'email_addresses' in user_config:
                 self.airflow.email_list = user_config['email_addresses']
             
-            print("User configuration loaded from user_config.py")
+            print("[OK] User configuration loaded from user_config.py")
             
         except ImportError:
-            print("user_config.py not found, using default configuration")
+            print("[WARN] user_config.py not found, using config.json defaults")
         except Exception as e:
-            print(f"Error loading user configuration: {e}")
-            print("Using default configuration")
+            print(f"[WARN] Error loading user configuration: {e}")
+            print("Using config.json defaults")
     
     def load_from_file(self):
         """Load configuration from JSON file"""
         config_path = Path(self.config_file)
         if config_path.exists():
             try:
-                with open(config_path, 'r') as f:
+                with open(config_path, 'r', encoding='utf-8') as f:
                     config_data = json.load(f)
                 
                 # Update configuration sections
@@ -690,8 +686,9 @@ class PipelineConfig:
         self.database.username = os.getenv('DB_USER', self.database.username)
         self.database.password = os.getenv('DB_PASSWORD', self.database.password)
         
-        # S3 settings
-        self.s3.enabled = os.getenv('S3_ENABLED', 'false').lower() == 'true'
+        # S3 settings (only override if env var is set)
+        if os.getenv('S3_ENABLED'):
+            self.s3.enabled = os.getenv('S3_ENABLED').lower() == 'true'
         self.s3.bucket_name = os.getenv('AWS_S3_BUCKET_NAME', self.s3.bucket_name)
         self.s3.region = os.getenv('AWS_DEFAULT_REGION', self.s3.region)
         

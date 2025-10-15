@@ -179,13 +179,10 @@ class S3DataUploader:
         """
         timestamp = datetime.now(timezone.utc)
         
-        # Create partitioned path: data_type/year/month/day/hour/
+        # Create partitioned path: year/data_type/stocks/month/
         s3_key = (
-            f"{data_type}/stocks/"
-            f"year={timestamp.year}/"
+            f"{timestamp.year}/{data_type}/stocks/"
             f"month={timestamp.month:02d}/"
-            f"day={timestamp.day:02d}/"
-            f"hour={timestamp.hour:02d}/"
             f"stock_data_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         )
         
@@ -212,11 +209,8 @@ class S3DataUploader:
         timestamp = datetime.now(timezone.utc)
         
         s3_key = (
-            f"{data_type}/crypto/"
-            f"year={timestamp.year}/"
+            f"{timestamp.year}/{data_type}/crypto/"
             f"month={timestamp.month:02d}/"
-            f"day={timestamp.day:02d}/"
-            f"hour={timestamp.hour:02d}/"
             f"crypto_data_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         )
         
@@ -243,10 +237,8 @@ class S3DataUploader:
         timestamp = datetime.now(timezone.utc)
         
         s3_key = (
-            f"processed/technical_analysis/{asset_type}/"
-            f"year={timestamp.year}/"
+            f"{timestamp.year}/processed/technical_analysis/{asset_type}/"
             f"month={timestamp.month:02d}/"
-            f"day={timestamp.day:02d}/"
             f"technical_analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         )
         
@@ -273,10 +265,8 @@ class S3DataUploader:
         timestamp = datetime.now(timezone.utc)
         
         s3_key = (
-            f"processed/portfolios/{portfolio_name}/"
-            f"year={timestamp.year}/"
+            f"{timestamp.year}/processed/portfolios/{portfolio_name}/"
             f"month={timestamp.month:02d}/"
-            f"day={timestamp.day:02d}/"
             f"portfolio_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
         )
         

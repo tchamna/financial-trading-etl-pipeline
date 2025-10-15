@@ -24,8 +24,13 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import get_config
 
-def upload_minute_data_to_s3():
-    """Upload minute data based on storage configuration (local/S3, JSON/Parquet)"""
+def upload_minute_data_to_s3(filename=None):
+    """
+    Upload minute data based on storage configuration (local/S3, JSON/Parquet)
+    
+    Args:
+        filename: Specific filename to upload, or None to auto-detect latest file
+    """
     
     config = get_config()
     
@@ -41,14 +46,42 @@ def upload_minute_data_to_s3():
     print(f"📄 JSON Format: {'✅' if storage_config.save_json_format else '❌'}")
     print(f"📊 Parquet Format: {'✅' if storage_config.save_parquet_format else '❌'}")
     
-    # Load the minute data
-    filename = "crypto_minute_data_20251012.json"
+    # Auto-detect latest file if not specified
+    if filename is None:
+        # Look for the latest crypto minute data file
+        data_dir = Path("data") if Path("data").exists() else Path(".")
+        json_files = list(data_dir.glob("crypto_minute_data_*.json"))
+        
+        if not json_files:
+            print(f"\n❌ No crypto minute data files found in {data_dir}")
+            return None
+        
+        # Get the most recent file
+        filename = max(json_files, key=lambda p: p.stat().st_mtime)
+        print(f"\n📁 Auto-detected latest file: {filename.name}")
+    else:
+        filename = Path(filename)
     
     try:
-        with open(filename, 'r') as f:
+        with open(str(filename), 'r') as f:
             data = json.load(f)
         
+        # Handle both list and dict formats
+        if isinstance(data, list):
+            # If it's a list, take the first element which should be the data dict
+            if len(data) > 0:
+                data = data[0]
+            else:
+                print(f"\n❌ Empty data list in {filename}")
+                return None
+        
         print(f"\n📄 Loaded: {filename}")
+        
+        # Check if crypto_data exists
+        if 'crypto_data' not in data:
+            print(f"\n❌ No 'crypto_data' key found in {filename}")
+            return None
+            
         print(f"📊 Records: {len(data['crypto_data'])}")
         
         upload_results = {}
@@ -66,7 +99,7 @@ def upload_minute_data_to_s3():
             )
             
             # Prepare data for upload
-            target_date = data['target_date']  # 2025-10-12
+            target_date = data.get('target_date', datetime.now().strftime('%Y-%m-%d'))
             year, month, day = target_date.split('-')
             
             # Upload JSON format (if enabled)
@@ -89,11 +122,11 @@ def upload_minute_data_to_s3():
         # Local Storage Management
         if storage_config.enable_local_storage:
             print(f"\n📁 LOCAL STORAGE MANAGEMENT...")
-            manage_local_storage(storage_config, data, filename)
+            manage_local_storage(storage_config, data, str(filename))
         else:
             print(f"\n⚠️ Local storage disabled - removing local file...")
-            if os.path.exists(filename):
-                os.remove(filename)
+            if os.path.exists(str(filename)):
+                os.remove(str(filename))
                 print(f"   🗑️ Removed: {filename}")
         
         return upload_results
@@ -167,7 +200,7 @@ def upload_json_format(s3_client, data, bucket_name, year, month, day, target_da
     compressed_content = gzip.compress(json_content.encode('utf-8'))
     
     # S3 key with partitioning
-    s3_key = f"processed/crypto-minute/json/year={year}/month={month}/day={day}/crypto_minute_data_{target_date.replace('-', '')}.json.gz"
+    s3_key = f"{year}/processed/crypto-minute/json/month={month}/crypto_minute_data_{target_date.replace('-', '')}.json.gz"
     
     s3_client.put_object(
         Bucket=bucket_name,
@@ -234,7 +267,7 @@ def upload_parquet_format(s3_client, crypto_data, bucket_name, year, month, day,
     parquet_content = parquet_buffer.getvalue()
     
     # S3 key with partitioning
-    s3_key = f"processed/crypto-minute/parquet/year={year}/month={month}/day={day}/crypto_minute_data_{target_date.replace('-', '')}.parquet"
+    s3_key = f"{year}/processed/crypto-minute/parquet/month={month}/crypto_minute_data_{target_date.replace('-', '')}.parquet"
     
     s3_client.put_object(
         Bucket=bucket_name,

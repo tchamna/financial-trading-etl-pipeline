@@ -2,7 +2,19 @@
 User Configuration for Financial Trading ETL Pipeline
 ====================================================
 
-This file contains only the essential settings that users typically need to modify.
+✅ THIS IS THE FILE YOU SHOULD EDIT!
+
+This file contains ALL the settings you need to customize your pipeline:
+- Symbols to track (stocks & crypto)
+- Data collection intervals
+- Storage preferences
+- Analysis features
+- Alerts and notifications
+
+📝 These settings are the SINGLE SOURCE OF TRUTH for user preferences.
+   They are NOT duplicated in config.json (which only contains credentials
+   and technical system settings).
+
 For advanced system configurations, see config.py
 
 Author: Shck Tchamna
@@ -117,55 +129,50 @@ COLLECTION_SCHEDULE = "*/5 9-17 * * 1-5"  # Every 5 minutes during market hours
 CRYPTO_WEEKEND_COLLECTION = True
 
 # ============================================================================
-# ADVANCED USER SETTINGS (optional)
+# ADVANCED SETTINGS (Modify with caution)
 # ============================================================================
 
-# API rate limiting (requests per minute)
-# Lower values are safer but slower
+# API request settings
 API_REQUESTS_PER_MINUTE = 5
-
-# Maximum retries for failed requests
 MAX_API_RETRIES = 3
 
-# Data validation
-# Set to False if you want to collect data even if prices seem unusual
-ENABLE_DATA_VALIDATION = True
-MAX_PRICE_CHANGE_PERCENT = 50.0  # Reject data if price changes more than 50% in one update
-
-# ============================================================================
-# AWS S3 SETTINGS (only if using S3 storage)
-# ============================================================================
-
-# S3 bucket name (change this to your bucket name)
-S3_BUCKET_NAME = "financial-trading-data-lake"
-
-# AWS region (change to your preferred region)
+# S3 settings
+S3_BUCKET_NAME = "financial-trading-data-lake"  # Your S3 bucket name
 AWS_REGION = "us-east-1"
-
-# S3 storage class (cost optimization)
-# Options: "STANDARD", "STANDARD_IA", "GLACIER"
 S3_STORAGE_CLASS = "STANDARD"
 
-# ============================================================================
-# DO NOT MODIFY BELOW THIS LINE
-# ============================================================================
+# Snowflake Data Warehouse settings
+ENABLE_SNOWFLAKE = False           # Enable Snowflake data warehouse integration
+SNOWFLAKE_WAREHOUSE = "FINANCIAL_WH"  # Snowflake warehouse name
+SNOWFLAKE_DATABASE = "FINANCIAL_DB"   # Snowflake database name
+SNOWFLAKE_SCHEMA = "CORE"             # Snowflake schema name
+SNOWFLAKE_LOAD_INTERVAL_MINUTES = 15  # How often to load data to Snowflake
+
+# Cron schedule for data collection (e.g., "*/5 * * * *" for every 5 minutes)
+COLLECTION_SCHEDULE = "*/5 * * * *"
+
 
 def get_user_config():
     """
-    Get user configuration as a dictionary.
-    This function is used by the main system to load your preferences.
+    Collects all user-defined configurations into a dictionary.
+    
+    This function makes it easy for the main configuration system (config.py)
+    to load and apply these user-specific settings.
+    
+    Returns:
+        dict: A dictionary containing all user-defined settings.
     """
     return {
-        # Symbols
+        # Symbols to track
         "stock_symbols": STOCK_SYMBOLS,
         "crypto_symbols": CRYPTO_SYMBOLS,
         
-        # Collection settings
+        # Data collection settings
         "collection_interval_minutes": COLLECTION_INTERVAL_MINUTES,
         "data_granularity": DATA_GRANULARITY,
         "historical_days": HISTORICAL_DAYS,
         
-        # Storage
+        # Storage preferences
         "enable_local_storage": ENABLE_LOCAL_STORAGE,
         "enable_s3_storage": ENABLE_S3_STORAGE,
         "save_json_format": SAVE_JSON_FORMAT,
@@ -173,32 +180,32 @@ def get_user_config():
         "local_data_directory": LOCAL_DATA_DIRECTORY,
         "keep_local_files_days": KEEP_LOCAL_FILES_DAYS,
         
-        # Analysis
+        # Analysis features
         "enable_technical_analysis": ENABLE_TECHNICAL_ANALYSIS,
         "simple_moving_averages": SIMPLE_MOVING_AVERAGES,
         "exponential_moving_averages": EXPONENTIAL_MOVING_AVERAGES,
         "enable_portfolio_tracking": ENABLE_PORTFOLIO_TRACKING,
         "default_portfolio_name": DEFAULT_PORTFOLIO_NAME,
         
-        # Alerts
+        # Alert settings
         "price_alert_threshold": PRICE_ALERT_THRESHOLD,
         "enable_email_alerts": ENABLE_EMAIL_ALERTS,
         "email_addresses": EMAIL_ADDRESSES,
         
-        # Schedule
-        "collection_schedule": COLLECTION_SCHEDULE,
-        "crypto_weekend_collection": CRYPTO_WEEKEND_COLLECTION,
-        
-        # Advanced
+        # Advanced settings
         "api_requests_per_minute": API_REQUESTS_PER_MINUTE,
         "max_api_retries": MAX_API_RETRIES,
-        "enable_data_validation": ENABLE_DATA_VALIDATION,
-        "max_price_change_percent": MAX_PRICE_CHANGE_PERCENT,
-        
-        # S3
         "s3_bucket_name": S3_BUCKET_NAME,
         "aws_region": AWS_REGION,
-        "s3_storage_class": S3_STORAGE_CLASS
+        "s3_storage_class": S3_STORAGE_CLASS,
+        "collection_schedule": COLLECTION_SCHEDULE,
+        
+        # Snowflake settings
+        "enable_snowflake": ENABLE_SNOWFLAKE,
+        "snowflake_warehouse": SNOWFLAKE_WAREHOUSE,
+        "snowflake_database": SNOWFLAKE_DATABASE,
+        "snowflake_schema": SNOWFLAKE_SCHEMA,
+        "snowflake_load_interval_minutes": SNOWFLAKE_LOAD_INTERVAL_MINUTES,
     }
 
 def validate_user_config():

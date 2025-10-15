@@ -44,20 +44,42 @@ class DailyDataPipeline:
         self.data_dir = Path("data")
         self.data_dir.mkdir(exist_ok=True)
         
-    def collect_yesterday_data(self):
-        """Collect minute-level data for yesterday."""
-        yesterday = datetime.now() - timedelta(days=1)
-        date_str = yesterday.strftime('%Y%m%d')
+    def collect_yesterday_data(self, target_date=None):
+        """
+        Collect minute-level data for a specific date.
+        
+        Args:
+            target_date: Date string in 'YYYY-MM-DD' format (default: yesterday)
+        """
+        # Validate and parse target date
+        if target_date is None:
+            yesterday = datetime.now() - timedelta(days=1)
+            target_date = yesterday.strftime('%Y-%m-%d')
+        else:
+            # Validate date format: YYYY-MM-DD
+            import re
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', target_date):
+                raise ValueError(f"Invalid date format: '{target_date}'. Must be YYYY-MM-DD (e.g., 2025-10-12)")
+            
+            # Validate it's a real date
+            try:
+                parsed_date = datetime.strptime(target_date, '%Y-%m-%d')
+                
+                # Check if date is not in the future
+                if parsed_date.date() > datetime.now().date():
+                    raise ValueError(f"Date {target_date} is in the future. Please provide a past or current date.")
+            except ValueError as e:
+                raise ValueError(f"Invalid date: {str(e)}")
+        
+        date_str = target_date.replace('-', '')  # Convert YYYY-MM-DD to YYYYMMDD for filename
         
         # Get symbols from configuration
         symbols = self.config.processing.crypto_symbols
-        logger.info(f"Starting data collection for {yesterday.strftime('%Y-%m-%d')}")
+        logger.info(f"Starting data collection for {target_date}")
         logger.info(f"Collecting data for symbols: {', '.join(symbols)}")
         
-        # Use the existing multi-source collector function
-        # Note: Currently collects data for predefined symbols
-        # TODO: Update crypto_minute_collector.py to accept configurable symbols
-        all_data = collect_multi_source_crypto_minutes()
+        # Use the existing multi-source collector function with target_date parameter
+        all_data = collect_multi_source_crypto_minutes(target_date=target_date)
         
         # Save to file
         filename = f"crypto_minute_data_{date_str}.json"
@@ -81,8 +103,8 @@ class DailyDataPipeline:
         logger.info("Starting data storage management...")
         
         try:
-            # Use the enhanced storage function
-            results = upload_minute_data_to_s3()
+            # Use the enhanced storage function with the specific filepath
+            results = upload_minute_data_to_s3(filename=str(filepath))
             
             if results:
                 logger.info("Data storage completed successfully")
@@ -150,14 +172,19 @@ class DailyDataPipeline:
                 logger.info(f"Removing old file: {file}")
                 file.unlink()
                 
-    def run_daily_pipeline(self):
-        """Run the complete daily data pipeline."""
+    def run_daily_pipeline(self, target_date=None):
+        """
+        Run the complete daily data pipeline.
+        
+        Args:
+            target_date: Date string in 'YYYY-MM-DD' format (default: yesterday)
+        """
         try:
             logger.info("=== Starting Daily Data Collection Pipeline ===")
             start_time = datetime.now()
             
             # Step 1: Collect data
-            data_file = self.collect_yesterday_data()
+            data_file = self.collect_yesterday_data(target_date=target_date)
             
             # Step 2: Store data (local/S3 based on config)
             upload_success = self.upload_to_s3(data_file)
@@ -188,13 +215,61 @@ class DailyDataPipeline:
 
 def main():
     """Main entry point for daily pipeline."""
-    pipeline = DailyDataPipeline()
-    result = pipeline.run_daily_pipeline()
+    import argparse
     
-    if result['status'] == 'error':
+    parser = argparse.ArgumentParser(
+        description='Automated daily crypto data collection pipeline',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  # Collect data for yesterday (default)
+  python daily_data_collection.py
+  
+  # Collect data for a specific date (multiple ways)
+  python daily_data_collection.py 2025-10-12
+  python daily_data_collection.py --date 2025-10-12
+  python daily_data_collection.py -d 2025-10-01
+        '''
+    )
+    
+    parser.add_argument(
+        'date',
+        nargs='?',
+        default=None,
+        help='Target date in YYYY-MM-DD format (default: yesterday)'
+    )
+    
+    parser.add_argument(
+        '-d', '--date-flag',
+        dest='date_flag',
+        type=str,
+        default=None,
+        help='Alternative: Target date in YYYY-MM-DD format (default: yesterday)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Use positional argument if provided, otherwise use flag argument
+    target_date = args.date or args.date_flag
+    
+    try:
+        pipeline = DailyDataPipeline()
+        result = pipeline.run_daily_pipeline(target_date=target_date)
+        
+        if result['status'] == 'error':
+            sys.exit(1)
+        else:
+            logger.info("Daily pipeline completed successfully")
+            
+    except ValueError as e:
+        logger.error(f"Error: {e}")
+        print(f"\n❌ Error: {e}")
+        print("Please use date format: YYYY-MM-DD (e.g., 2025-10-12)")
         sys.exit(1)
-    else:
-        logger.info("Daily pipeline completed successfully")
+    except Exception as e:
+        logger.error(f"Unexpected error: {e}")
+        print(f"\n❌ Unexpected error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

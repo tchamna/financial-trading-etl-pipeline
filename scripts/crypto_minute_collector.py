@@ -213,8 +213,14 @@ def get_kraken_minute_data(symbol: str, target_date: str):
         return []
 
 
-def collect_multi_source_crypto_minutes(symbols=None):
-    """Collect minute data using multiple free APIs"""
+def collect_multi_source_crypto_minutes(symbols=None, target_date=None):
+    """
+    Collect minute data using multiple free APIs
+    
+    Args:
+        symbols: List of crypto symbols to collect (uses config if None)
+        target_date: Date string in 'YYYY-MM-DD' format (uses yesterday if None)
+    """
     
     # Get symbols from config if not provided
     if symbols is None:
@@ -234,9 +240,27 @@ def collect_multi_source_crypto_minutes(symbols=None):
     else:
         crypto_symbols = symbols
     
-    # Calculate yesterday's date
-    yesterday = datetime.now() - timedelta(days=1)
-    target_date = yesterday.strftime('%Y-%m-%d')
+    # Use provided date or default to yesterday
+    if target_date is None:
+        yesterday = datetime.now() - timedelta(days=1)
+        target_date = yesterday.strftime('%Y-%m-%d')
+    else:
+        # Strictly validate date format: YYYY-MM-DD
+        try:
+            # Check format with regex first
+            import re
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', target_date):
+                raise ValueError(f"Invalid date format: '{target_date}'. Must be YYYY-MM-DD (e.g., 2025-10-12)")
+            
+            # Validate it's a real date
+            parsed_date = datetime.strptime(target_date, '%Y-%m-%d')
+            
+            # Check if date is not in the future
+            if parsed_date.date() > datetime.now().date():
+                raise ValueError(f"Date {target_date} is in the future. Please provide a past or current date.")
+                
+        except ValueError as e:
+            raise ValueError(f"Invalid date: {str(e)}")
     
     print("🎯 MULTI-SOURCE CRYPTO MINUTE DATA COLLECTOR")
     print("=" * 70)
@@ -290,9 +314,17 @@ def collect_multi_source_crypto_minutes(symbols=None):
         
         time.sleep(1)  # Be nice to APIs
     
-    # Save results
+    # Save results to configured data directory
+    config = get_config()
+    data_dir = config.storage.local_data_directory
+    
+    # Ensure data directory exists
+    os.makedirs(data_dir, exist_ok=True)
+    
     filename = f"crypto_minute_data_{target_date.replace('-', '')}.json"
-    with open(filename, 'w') as f:
+    filepath = os.path.join(data_dir, filename)
+    
+    with open(filepath, 'w') as f:
         json.dump(all_data, f, indent=2, default=str)
     
     print(f"\n💾 COLLECTION SUMMARY:")
@@ -359,14 +391,23 @@ def analyze_minute_crypto_data(data):
             print(f"   🔄 API Source: {symbol_data[0]['api_source']}")
 
 
-def main():
-    """Main execution for multi-source crypto minute collection"""
+def main(target_date=None):
+    """
+    Main execution for multi-source crypto minute collection
     
-    print("⏰ GETTING EVERY MINUTE OF YESTERDAY'S CRYPTO DATA")
+    Args:
+        target_date: Date string in 'YYYY-MM-DD' format (uses yesterday if None)
+    """
+    
+    # Display the date being collected
+    if target_date:
+        print(f"⏰ GETTING EVERY MINUTE OF CRYPTO DATA FOR {target_date}")
+    else:
+        print("⏰ GETTING EVERY MINUTE OF YESTERDAY'S CRYPTO DATA")
     print("=" * 70)
     
     # Collect data
-    data, filename = collect_multi_source_crypto_minutes()
+    data, filename = collect_multi_source_crypto_minutes(target_date=target_date)
     
     # Analyze data
     analyze_minute_crypto_data(data)
@@ -375,7 +416,10 @@ def main():
     print(f"\n🎉 SUCCESS! Crypto Minute Data Collection Complete")
     print("=" * 55)
     print(f"📄 File: {filename}")
-    print(f"💰 You now have minute-by-minute crypto data for yesterday!")
+    if target_date:
+        print(f"💰 You now have minute-by-minute crypto data for {target_date}!")
+    else:
+        print(f"💰 You now have minute-by-minute crypto data for yesterday!")
     print(f"📊 Use this for intraday analysis, volatility studies, etc.")
     
     # Next steps
@@ -386,4 +430,49 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        description='Collect minute-level crypto data from multiple free APIs',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  # Collect data for yesterday (default)
+  python crypto_minute_collector.py
+  
+  # Collect data for a specific date (multiple ways)
+  python crypto_minute_collector.py 2025-10-12
+  python crypto_minute_collector.py --date 2025-10-12
+  python crypto_minute_collector.py -d 2025-10-01
+        '''
+    )
+    
+    parser.add_argument(
+        'date',
+        nargs='?',
+        default=None,
+        help='Target date in YYYY-MM-DD format (default: yesterday)'
+    )
+    
+    parser.add_argument(
+        '-d', '--date-flag',
+        dest='date_flag',
+        type=str,
+        default=None,
+        help='Alternative: Target date in YYYY-MM-DD format (default: yesterday)'
+    )
+    
+    args = parser.parse_args()
+    
+    # Use positional argument if provided, otherwise use flag argument
+    target_date = args.date or args.date_flag
+    
+    try:
+        main(target_date=target_date)
+    except ValueError as e:
+        print(f"\n❌ Error: {e}")
+        print("Please use date format: YYYY-MM-DD (e.g., 2025-10-12)")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\n❌ Unexpected error: {e}")
+        sys.exit(1)

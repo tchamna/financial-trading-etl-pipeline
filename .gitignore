@@ -22,19 +22,13 @@ config/secrets/                   # Nested secrets
 # ================================
 *.csv                             # Data exports
 *.sql                             # Database dumps
-*.parquet                         # Parquet data files
 *.pickle                          # Pickled data
 *.xlsx                            # Excel exports
-data                              # Data directory
-data/                             # Data directory with slash
-data/*                            # All contents of data directory
-data/**                           # All contents recursively
 exports/                          # Export directory
 
 # ================================
 # ⚙️  CONFIGURATION FILES
 # ================================
-config.json                       # Production configuration (contains secrets)
 # Keep these files:
 # config.example.json             # Example configuration template
 # config.py                       # Configuration management module
@@ -275,3 +269,4 @@ trading_signals/
 # ================================
 
 data/
+config.json
