@@ -1,0 +1,127 @@
+# ===================================================================
+# AIRFLOW DOCKER SETUP FOR WINDOWS
+# ===================================================================
+# Airflow 3.x doesn't run natively on Windows. Use Docker instead.
+
+# Docker Compose file for Apache Airflow
+# This will run Airflow webserver, scheduler, and PostgreSQL
+
+version: '3.8'
+
+x-airflow-common:
+  &airflow-common
+  build:
+    context: .
+    dockerfile: docker/airflow/Dockerfile
+  image: financial-etl-airflow:latest
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'financial_etl_secret_key_12345'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
+    AIRFLOW__CORE__ENABLE_XCOM_PICKLING: 'true'
+    WTF_CSRF_ENABLED: 'False'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    # AWS Credentials (loaded from .env file - NEVER commit credentials!)
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+    # Stock Data API Keys - Multi-source reliability
+    TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY}
+    FMP_API_KEY: ${FMP_API_KEY}
+    FINNHUB_API_KEY: ${FINNHUB_API_KEY}
+    # Currency/Forex Data API
+    OPEN_EXCHANGE_RATES_API_KEY: ${OPEN_EXCHANGE_RATES_API_KEY}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./airflow_home/logs:/opt/airflow/logs
+    - ./airflow_home/plugins:/opt/airflow/plugins
+    - ./data:/opt/airflow/data
+    - ./scripts:/opt/airflow/scripts
+    - ./automation:/opt/airflow/automation
+    - ./utilities:/opt/airflow/utilities
+    - ./config.json:/opt/airflow/config.json
+    - ./user_config.py:/opt/airflow/user_config.py
+    - ./config.py:/opt/airflow/config.py
+    - ./requirements.txt:/opt/airflow/requirements.txt
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+    ports:
+      - "5432:5432"
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - 8080:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-admin}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-admin}
+    user: "0:0"
+    volumes:
+      - .:/sources
+
+volumes:
+  postgres-db-volume:

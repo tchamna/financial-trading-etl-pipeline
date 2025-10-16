@@ -314,18 +314,8 @@ def collect_multi_source_crypto_minutes(symbols=None, target_date=None):
         
         time.sleep(1)  # Be nice to APIs
     
-    # Save results to configured data directory
-    config = get_config()
-    data_dir = config.storage.local_data_directory
-    
-    # Ensure data directory exists
-    os.makedirs(data_dir, exist_ok=True)
-    
-    filename = f"crypto_minute_data_{target_date.replace('-', '')}.json"
-    filepath = os.path.join(data_dir, filename)
-    
-    with open(filepath, 'w') as f:
-        json.dump(all_data, f, indent=2, default=str)
+    # NOTE: File saving moved to main() function to support combined crypto+stock data
+    # This function now just returns data for the caller to handle
     
     print(f"\n💾 COLLECTION SUMMARY:")
     print("=" * 30)
@@ -334,14 +324,13 @@ def collect_multi_source_crypto_minutes(symbols=None, target_date=None):
     
     print(f"   💰 Total minute records: {total_records}")
     print(f"   🪙 Unique symbols: {unique_symbols}")
-    print(f"   📄 Saved to: {filename}")
     
     # Show breakdown by symbol
     for symbol in set(r['symbol'] for r in all_data['crypto_data']):
-        count = len([r for r in all_data['crypto_data'] if r['symbol'] == symbol])
+        count = sum(1 for r in all_data['crypto_data'] if r['symbol'] == symbol)
         print(f"   📊 {symbol}: {count} minutes")
     
-    return all_data, filename
+    return all_data  # Return data only, file saving happens in main() or caller
 
 
 def analyze_minute_crypto_data(data):
@@ -393,7 +382,7 @@ def analyze_minute_crypto_data(data):
 
 def main(target_date=None):
     """
-    Main execution for multi-source crypto minute collection
+    Main execution for multi-source crypto + stock minute collection
     
     Args:
         target_date: Date string in 'YYYY-MM-DD' format (uses yesterday if None)
@@ -401,32 +390,92 @@ def main(target_date=None):
     
     # Display the date being collected
     if target_date:
-        print(f"⏰ GETTING EVERY MINUTE OF CRYPTO DATA FOR {target_date}")
+        print(f"⏰ COLLECTING FINANCIAL DATA (CRYPTO + STOCKS) FOR {target_date}")
     else:
-        print("⏰ GETTING EVERY MINUTE OF YESTERDAY'S CRYPTO DATA")
+        print("⏰ COLLECTING FINANCIAL DATA (CRYPTO + STOCKS) FOR YESTERDAY")
     print("=" * 70)
     
-    # Collect data
-    data, filename = collect_multi_source_crypto_minutes(target_date=target_date)
+    # Use yesterday if no date provided
+    if target_date is None:
+        from datetime import datetime, timedelta
+        yesterday = datetime.now() - timedelta(days=1)
+        target_date = yesterday.strftime('%Y-%m-%d')
     
-    # Analyze data
-    analyze_minute_crypto_data(data)
+    # Collect crypto data
+    print("\n🪙 COLLECTING CRYPTOCURRENCY DATA...")
+    crypto_data = collect_multi_source_crypto_minutes(target_date=target_date)
+    
+    # Collect stock data
+    print("\n📈 COLLECTING STOCK DATA...")
+    try:
+        # Import stock collector
+        import sys
+        import os
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from scripts.stock_minute_collector import collect_stock_minute_data
+        
+        # Get config for API key and symbols
+        config = get_config()
+        stock_data_result = collect_stock_minute_data(
+            symbols=config.processing.stock_symbols,
+            api_key=config.api.alpha_vantage_api_key,
+            target_date=target_date
+        )
+        stock_data = stock_data_result['stocks']
+        print(f"✅ Stock collection complete: {len(stock_data)} records")
+    except Exception as e:
+        print(f"⚠️  Stock collection failed: {e}")
+        print("   (This is normal if markets are closed or API limits reached)")
+        stock_data = []
+        stock_data_result = {'stocks': [], 'total_records': 0, 'successful_symbols': [], 'failed_symbols': []}
+    
+    # Combine data into new format
+    combined_data = {
+        'collection_date': target_date,
+        'crypto_data': crypto_data if isinstance(crypto_data, list) else crypto_data.get('crypto_data', []),
+        'stock_data': stock_data,
+        'summary': {
+            'crypto_records': len(crypto_data) if isinstance(crypto_data, list) else len(crypto_data.get('crypto_data', [])),
+            'stock_records': len(stock_data),
+            'total_records': (len(crypto_data) if isinstance(crypto_data, list) else len(crypto_data.get('crypto_data', []))) + len(stock_data),
+            'crypto_symbols': len(config.processing.crypto_symbols),
+            'stock_symbols_successful': len(stock_data_result['successful_symbols']),
+            'stock_symbols_failed': stock_data_result['failed_symbols']
+        }
+    }
+    
+    # Save combined data with NEW filename format
+    data_dir = config.storage.local_data_directory
+    os.makedirs(data_dir, exist_ok=True)
+    
+    filename = f"financial_minute_data_{target_date.replace('-', '')}.json"
+    filepath = os.path.join(data_dir, filename)
+    
+    with open(filepath, 'w') as f:
+        import json
+        json.dump(combined_data, f, indent=2, default=str)
+    
+    # Analyze crypto data
+    analyze_minute_crypto_data(crypto_data if isinstance(crypto_data, list) else crypto_data.get('crypto_data', []))
     
     # Success summary
-    print(f"\n🎉 SUCCESS! Crypto Minute Data Collection Complete")
-    print("=" * 55)
-    print(f"📄 File: {filename}")
-    if target_date:
-        print(f"💰 You now have minute-by-minute crypto data for {target_date}!")
-    else:
-        print(f"💰 You now have minute-by-minute crypto data for yesterday!")
-    print(f"📊 Use this for intraday analysis, volatility studies, etc.")
+    print(f"\n🎉 SUCCESS! Financial Data Collection Complete")
+    print("=" * 60)
+    print(f"� File: {filename}")
+    print(f"�📊 Summary:")
+    print(f"   🪙 Crypto: {combined_data['summary']['crypto_records']:,} records from {combined_data['summary']['crypto_symbols']} coins")
+    print(f"   📈 Stocks: {combined_data['summary']['stock_records']:,} records from {len(stock_data_result['successful_symbols'])} stocks")
+    print(f"   💰 Total: {combined_data['summary']['total_records']:,} minute-level data points!")
+    
+    if stock_data_result['failed_symbols']:
+        print(f"\n⚠️  Failed stocks: {', '.join(stock_data_result['failed_symbols'])}")
+        print("   (Normal if markets closed or API limits reached)")
     
     # Next steps
     print(f"\n🚀 NEXT STEPS:")
-    print("1️⃣ Analyze the minute patterns in the saved JSON file")
-    print("2️⃣ Set up automated collection for ongoing minute data")
-    print("3️⃣ For stocks: Wait for weekday or upgrade to premium API")
+    print("1️⃣ Data saved to both JSON and will be uploaded to S3")
+    print("2️⃣ Airflow will run this automatically every 6 hours")
+    print("3️⃣ Stock data available during market hours (Mon-Fri 9:30-4PM EST)")
 
 
 if __name__ == "__main__":

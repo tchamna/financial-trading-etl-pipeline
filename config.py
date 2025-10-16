@@ -84,6 +84,27 @@ class S3Config:
 
 
 @dataclass
+class SnowflakeConfig:
+    """Snowflake configuration settings"""
+    account: str = ""
+    username: str = ""
+    password: str = ""
+    database: str = "FINANCIAL_DATA"
+    warehouse: str = "COMPUTE_WH"
+    schema: str = "PUBLIC"
+    role: str = "ACCOUNTADMIN"
+    
+    def __post_init__(self):
+        """Load Snowflake credentials from environment if not provided"""
+        if not self.account:
+            self.account = os.getenv('SNOWFLAKE_ACCOUNT', self.account)
+        if not self.username:
+            self.username = os.getenv('SNOWFLAKE_USER', self.username)
+        if not self.password:
+            self.password = os.getenv('SNOWFLAKE_PASSWORD', self.password)
+
+
+@dataclass
 class APIConfig:
     """API configuration settings"""
     # Alpha Vantage
@@ -533,6 +554,7 @@ class PipelineConfig:
         self.storage = StorageConfig()
         self.database = DatabaseConfig()
         self.s3 = S3Config()
+        self.snowflake = SnowflakeConfig()
         self.api = APIConfig()
         self.crypto_mappings = CryptoMappingConfig()
         self.processing = ProcessingConfig()
@@ -652,6 +674,9 @@ class PipelineConfig:
                 
                 if 's3' in config_data:
                     self._update_dataclass(self.s3, config_data['s3'])
+                
+                if 'snowflake' in config_data:
+                    self._update_dataclass(self.snowflake, config_data['snowflake'])
                 
                 if 'crypto_mappings' in config_data:
                     self._update_dataclass(self.crypto_mappings, config_data['crypto_mappings'])

@@ -24,6 +24,16 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import get_config
 
+
+def check_s3_file_exists(s3_client, bucket_name, key):
+    """Check if a file already exists in S3"""
+    try:
+        s3_client.head_object(Bucket=bucket_name, Key=key)
+        return True
+    except:
+        return False
+
+
 def upload_minute_data_to_s3(filename=None):
     """
     Upload minute data based on storage configuration (local/S3, JSON/Parquet)
@@ -48,12 +58,18 @@ def upload_minute_data_to_s3(filename=None):
     
     # Auto-detect latest file if not specified
     if filename is None:
-        # Look for the latest crypto minute data file
+        # Look for the latest financial minute data file (new format) or crypto minute data file (legacy)
         data_dir = Path("data") if Path("data").exists() else Path(".")
-        json_files = list(data_dir.glob("crypto_minute_data_*.json"))
+        
+        # Try new format first
+        json_files = list(data_dir.glob("financial_minute_data_*.json"))
+        
+        # Fallback to legacy format if new format not found
+        if not json_files:
+            json_files = list(data_dir.glob("crypto_minute_data_*.json"))
         
         if not json_files:
-            print(f"\n❌ No crypto minute data files found in {data_dir}")
+            print(f"\n❌ No financial/crypto minute data files found in {data_dir}")
             return None
         
         # Get the most recent file
@@ -102,19 +118,44 @@ def upload_minute_data_to_s3(filename=None):
             target_date = data.get('target_date', datetime.now().strftime('%Y-%m-%d'))
             year, month, day = target_date.split('-')
             
-            # Upload JSON format (if enabled)
-            if storage_config.save_json_format:
-                print(f"\n📄 Uploading JSON format...")
-                json_key = upload_json_format(s3_client, data, s3_config.bucket_name, year, month, day, target_date)
+            # Check if files already exist to avoid redundant uploads
+            json_key = f"{year}/processed/financial-minute/json/month={month}/financial_minute_data_{target_date.replace('-', '')}.json.gz"
+            parquet_key = f"{year}/processed/financial-minute/parquet/month={month}/financial_minute_data_{target_date.replace('-', '')}.parquet"
+            
+            json_exists = check_s3_file_exists(s3_client, s3_config.bucket_name, json_key)
+            parquet_exists = check_s3_file_exists(s3_client, s3_config.bucket_name, parquet_key)
+            
+            if json_exists and parquet_exists:
+                print(f"\n⏭️  Files already exist in S3 - skipping redundant upload")
+                print(f"   📄 JSON: {json_key}")
+                print(f"   📊 Parquet: {parquet_key}")
+                print(f"   💡 Tip: Data for {target_date} has already been collected")
                 upload_results['json'] = json_key
-            
-            # Upload Parquet format (if enabled)
-            if storage_config.save_parquet_format:
-                print(f"\n📊 Uploading Parquet format...")
-                parquet_key = upload_parquet_format(s3_client, data['crypto_data'], s3_config.bucket_name, year, month, day, target_date)
                 upload_results['parquet'] = parquet_key
+                upload_results['skipped'] = True
+            else:
+                # Upload JSON format (if enabled and doesn't exist)
+                if storage_config.save_json_format and not json_exists:
+                    print(f"\n📄 Uploading JSON format...")
+                    json_key = upload_json_format(s3_client, data, s3_config.bucket_name, year, month, day, target_date)
+                    upload_results['json'] = json_key
+                elif json_exists:
+                    print(f"\n⏭️  JSON already exists - skipping")
+                    upload_results['json'] = json_key
+                
+                # Upload Parquet format (if enabled and doesn't exist)
+                if storage_config.save_parquet_format and not parquet_exists:
+                    print(f"\n📊 Uploading Parquet format...")
+                    # Combine crypto and stock data for parquet upload
+                    combined_data = data.get('crypto_data', []) + data.get('stock_data', [])
+                    parquet_key = upload_parquet_format(s3_client, combined_data, s3_config.bucket_name, year, month, day, target_date)
+                    upload_results['parquet'] = parquet_key
+                elif parquet_exists:
+                    print(f"\n⏭️  Parquet already exists - skipping")
+                    upload_results['parquet'] = parquet_key
             
-            print(f"\n✅ S3 uploads completed!")
+                print(f"\n✅ S3 uploads completed!")
+            
             print(f"🗂️ Bucket: {s3_config.bucket_name}")
         else:
             print(f"\n⚠️ S3 upload skipped (disabled in configuration)")
@@ -159,9 +200,17 @@ def manage_local_storage(storage_config, data, filename):
         parquet_filename = local_dir / Path(filename).stem
         parquet_filename = parquet_filename.with_suffix('.parquet')
         
-        # Convert to DataFrame and save as Parquet
-        df = pd.DataFrame(data['crypto_data'])
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        # Convert to DataFrame and save as Parquet (combine crypto and stock data)
+        combined_data = data.get('crypto_data', []) + data.get('stock_data', [])
+        df = pd.DataFrame(combined_data)
+        
+        # Parse timestamps with mixed formats (crypto has " UTC" suffix, stocks don't)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], format='mixed', utc=True)
+        
+        # Standardize column names (crypto uses 'api_source', stocks use 'source')
+        if 'source' in df.columns and 'api_source' not in df.columns:
+            df['api_source'] = df['source']
+            df = df.drop('source', axis=1)
         
         # Optimize data types
         numeric_columns = ['open', 'high', 'low', 'close', 'volume']
@@ -170,7 +219,7 @@ def manage_local_storage(storage_config, data, filename):
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
         df.to_parquet(parquet_filename, compression='snappy')
-        print(f"   📊 Saved Parquet: {parquet_filename}")
+        print(f"   📊 Saved Parquet: {parquet_filename} ({len(combined_data)} records)")
     
     # Clean up old files
     cleanup_old_files(local_dir, storage_config.keep_local_days)
@@ -199,8 +248,8 @@ def upload_json_format(s3_client, data, bucket_name, year, month, day, target_da
     json_content = json.dumps(data, indent=2, default=str)
     compressed_content = gzip.compress(json_content.encode('utf-8'))
     
-    # S3 key with partitioning
-    s3_key = f"{year}/processed/crypto-minute/json/month={month}/crypto_minute_data_{target_date.replace('-', '')}.json.gz"
+    # S3 key with partitioning - use financial_minute_data for combined crypto+stock data
+    s3_key = f"{year}/processed/financial-minute/json/month={month}/financial_minute_data_{target_date.replace('-', '')}.json.gz"
     
     s3_client.put_object(
         Bucket=bucket_name,
@@ -209,10 +258,12 @@ def upload_json_format(s3_client, data, bucket_name, year, month, day, target_da
         ContentType='application/json',
         ContentEncoding='gzip',
         Metadata={
-            'data-type': 'crypto-minute',
+            'data-type': 'financial-minute',
             'format': 'json',
             'resolution': 'minute',
-            'records': str(len(data['crypto_data'])),
+            'crypto-records': str(len(data.get('crypto_data', []))),
+            'stock-records': str(len(data.get('stock_data', []))),
+            'total-records': str(data.get('summary', {}).get('total_records', 0)),
             'date': target_date
         }
     )
@@ -266,8 +317,8 @@ def upload_parquet_format(s3_client, crypto_data, bucket_name, year, month, day,
     
     parquet_content = parquet_buffer.getvalue()
     
-    # S3 key with partitioning
-    s3_key = f"{year}/processed/crypto-minute/parquet/month={month}/crypto_minute_data_{target_date.replace('-', '')}.parquet"
+    # S3 key with partitioning - use financial_minute_data for combined crypto+stock data
+    s3_key = f"{year}/processed/financial-minute/parquet/month={month}/financial_minute_data_{target_date.replace('-', '')}.parquet"
     
     s3_client.put_object(
         Bucket=bucket_name,
@@ -275,7 +326,7 @@ def upload_parquet_format(s3_client, crypto_data, bucket_name, year, month, day,
         Body=parquet_content,
         ContentType='application/octet-stream',
         Metadata={
-            'data-type': 'crypto-minute',
+            'data-type': 'financial-minute',
             'format': 'parquet',
             'resolution': 'minute',
             'records': str(len(crypto_data)),

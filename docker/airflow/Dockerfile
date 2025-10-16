@@ -1,5 +1,5 @@
 # Financial Trading ETL Pipeline - Airflow Docker Image
-FROM apache/airflow:2.8.0-python3.11
+FROM apache/airflow:2.7.3-python3.11
 
 # Switch to root user to install system dependencies
 USER root
@@ -30,28 +30,19 @@ ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 # Switch back to airflow user
 USER airflow
 
-# Copy requirements
-COPY requirements.txt /requirements.txt
+# Copy requirements for Airflow image (excludes airflow itself)
+COPY requirements-airflow.txt /requirements-airflow.txt
 
 # Install Python packages
-RUN pip install --no-cache-dir -r /requirements.txt
+RUN pip install --no-cache-dir -r /requirements-airflow.txt
 
 # Create necessary directories
 RUN mkdir -p /opt/airflow/dags \
     && mkdir -p /opt/airflow/logs \
     && mkdir -p /opt/airflow/plugins \
-    && mkdir -p /opt/spark_jobs
-
-# Copy Airflow configuration
-COPY airflow.cfg /opt/airflow/airflow.cfg
-
-# Copy DAGs and Spark jobs
-COPY dags/ /opt/airflow/dags/
-COPY spark/ /opt/spark_jobs/
+    && mkdir -p /opt/airflow/data
 
 # Set working directory
 WORKDIR /opt/airflow
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=5 \
-    CMD curl --fail http://localhost:8080/health || exit 1
+# Note: DAGs, configs, and data will be mounted as volumes from docker-compose

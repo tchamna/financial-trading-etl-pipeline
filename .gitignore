@@ -46,6 +46,30 @@ plugins/                          # Custom plugins (if sensitive)
 airflow-webserver.pid             # Process files
 standalone_admin_password.txt     # Admin credentials
 airflow.db                        # SQLite database
+airflow_home/                     # Local Airflow runtime directory
+automation/*.log                  # Automation logs
+
+# ================================
+# 🧪 TEST & TEMPORARY FILES
+# ================================
+test_*.py                         # Temporary test scripts
+check_*.py                        # Verification scripts
+analyze_*.py                      # Analysis scripts
+verify_*.py                       # Verification scripts
+clear_*.py                        # Cleanup scripts
+find_*.py                         # Search scripts
+list_*.py                         # Listing scripts
+setup_*.py                        # Setup scripts
+*.ps1                             # PowerShell scripts (except production)
+!setup_scheduler.ps1              # Keep production scheduler
+!quickstart.ps1                   # Keep quickstart scripts
+*_RESULTS.md                      # Test result reports
+*_REPORT.md                       # Temporary reports
+*_STATUS.md                       # Status reports
+*_FIX*.md                         # Fix documentation
+*_STRATEGY.md                     # Strategy notes
+*_COMPLETE.md                     # Completion notes
+*_VERIFIED.md                     # Verification notes
 
 # ================================
 # 🐍 PYTHON ENVIRONMENT

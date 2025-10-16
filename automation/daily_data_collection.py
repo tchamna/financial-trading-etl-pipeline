@@ -21,6 +21,7 @@ sys.path.append(str(project_root))
 
 from config import PipelineConfig
 from scripts.crypto_minute_collector import collect_multi_source_crypto_minutes
+from scripts.reliable_stock_collector import collect_stock_minute_data_reliable
 from scripts.upload_minute_data import upload_minute_data_to_s3
 from utilities.analysis.simple_minute_analyzer import SimpleMinuteAnalyzer
 
@@ -49,10 +50,11 @@ class DailyDataPipeline:
         Collect minute-level data for a specific date.
         
         Args:
-            target_date: Date string in 'YYYY-MM-DD' format (default: yesterday)
+            target_date: Date string in 'YYYY-MM-DD' format (default: yesterday for complete market data)
         """
         # Validate and parse target date
         if target_date is None:
+            # Collect YESTERDAY's data for complete market data (stock markets are closed)
             yesterday = datetime.now() - timedelta(days=1)
             target_date = yesterday.strftime('%Y-%m-%d')
         else:
@@ -74,26 +76,55 @@ class DailyDataPipeline:
         date_str = target_date.replace('-', '')  # Convert YYYY-MM-DD to YYYYMMDD for filename
         
         # Get symbols from configuration
-        symbols = self.config.processing.crypto_symbols
+        crypto_symbols = self.config.processing.crypto_symbols
+        stock_symbols = self.config.processing.stock_symbols
+        
         logger.info(f"Starting data collection for {target_date}")
-        logger.info(f"Collecting data for symbols: {', '.join(symbols)}")
+        logger.info(f"Crypto symbols: {', '.join(crypto_symbols)}")
+        logger.info(f"Stock symbols: {', '.join(stock_symbols)}")
         
-        # Use the existing multi-source collector function with target_date parameter
-        all_data = collect_multi_source_crypto_minutes(target_date=target_date)
+        # Collect crypto data
+        crypto_data = collect_multi_source_crypto_minutes(target_date=target_date)
         
-        # Save to file
-        filename = f"crypto_minute_data_{date_str}.json"
+        # Collect stock data using RELIABLE multi-source collector with automatic fallback
+        stock_data_result = collect_stock_minute_data_reliable(
+            symbols=stock_symbols,
+            target_date=target_date
+        )
+        
+        # Fix stock timestamps: ensure all have UTC timezone
+        for rec in stock_data_result['stocks']:
+            ts = rec.get('timestamp')
+            if ts and 'UTC' not in ts:
+                # If timestamp is missing timezone, add ' UTC'
+                rec['timestamp'] = ts + ' UTC'
+        
+        # Combine data
+        all_data = {
+            'collection_date': target_date,
+            'crypto_data': crypto_data if isinstance(crypto_data, list) else crypto_data.get('crypto_data', []),
+            'stock_data': stock_data_result['stocks'],
+            'summary': {
+                'crypto_records': len(crypto_data) if isinstance(crypto_data, list) else len(crypto_data.get('crypto_data', [])),
+                'stock_records': stock_data_result['total_records'],
+                'total_records': (len(crypto_data) if isinstance(crypto_data, list) else len(crypto_data.get('crypto_data', []))) + stock_data_result['total_records'],
+                'successful_crypto_symbols': len(crypto_symbols),
+                'successful_stock_symbols': len(stock_data_result['successful_symbols']),
+                'failed_stock_symbols': stock_data_result['failed_symbols']
+            }
+        }
+        
+        # Save combined data to file
+        filename = f"financial_minute_data_{date_str}.json"
         filepath = self.data_dir / filename
         
         with open(filepath, 'w') as f:
             json.dump(all_data, f, indent=2, default=str)
             
-        if 'crypto_data' in all_data:
-            record_count = len(all_data['crypto_data'])
-        else:
-            record_count = len(all_data) if isinstance(all_data, list) else 0
-            
-        logger.info(f"Collected {record_count} minute records")
+        total_records = all_data['summary']['total_records']
+        logger.info(f"Collected {total_records} total minute records")
+        logger.info(f"  - Crypto: {all_data['summary']['crypto_records']} records")
+        logger.info(f"  - Stocks: {all_data['summary']['stock_records']} records")
         logger.info(f"Data saved to {filepath}")
         
         return filepath
