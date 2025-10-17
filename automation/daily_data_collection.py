@@ -23,6 +23,7 @@ from config import PipelineConfig
 from scripts.crypto_minute_collector import collect_multi_source_crypto_minutes
 from scripts.reliable_stock_collector import collect_stock_minute_data_reliable
 from scripts.upload_minute_data import upload_minute_data_to_s3
+from scripts.snowflake_data_loader import SnowflakeLoader
 from utilities.analysis.simple_minute_analyzer import SimpleMinuteAnalyzer
 
 # Setup logging
@@ -44,6 +45,16 @@ class DailyDataPipeline:
         self.config = PipelineConfig()
         self.data_dir = Path("data")
         self.data_dir.mkdir(exist_ok=True)
+        
+        # Set up API keys from config as environment variables
+        # This is needed for stock data collectors to access APIs
+        if hasattr(self.config, 'api'):
+            if hasattr(self.config.api, 'alpha_vantage_api_key') and self.config.api.alpha_vantage_api_key:
+                os.environ['ALPHA_VANTAGE_API_KEY'] = self.config.api.alpha_vantage_api_key
+            if hasattr(self.config.api, 'polygon_api_key') and self.config.api.polygon_api_key:
+                os.environ['POLYGON_API_KEY'] = self.config.api.polygon_api_key
+            if hasattr(self.config.api, 'finnhub_api_key') and self.config.api.finnhub_api_key:
+                os.environ['FINNHUB_API_KEY'] = self.config.api.finnhub_api_key
         
     def collect_yesterday_data(self, target_date=None):
         """
@@ -159,6 +170,71 @@ class DailyDataPipeline:
         except Exception as e:
             logger.error(f"Storage error: {str(e)}")
             return False
+    
+    def load_to_snowflake(self, filepath):
+        """Load data from parquet file to Snowflake."""
+        logger.info("Starting Snowflake data load...")
+        
+        try:
+            # Check if Snowflake is enabled
+            from user_config import ENABLE_SNOWFLAKE
+            if not ENABLE_SNOWFLAKE:
+                logger.info("Snowflake loading is disabled in user_config.py")
+                return False
+            
+            loader = SnowflakeLoader()
+            
+            # Connect to Snowflake
+            if loader.connect():
+                logger.info("✅ Connected to Snowflake")
+                
+                # Determine which file to load (prefer parquet if available)
+                filepath = Path(filepath)
+                parquet_file = filepath.parent / filepath.name.replace('.json', '.parquet')
+                
+                if parquet_file.exists():
+                    logger.info(f"📥 Loading parquet file: {parquet_file.name}")
+                    load_file = str(parquet_file)
+                else:
+                    logger.info(f"📥 Loading JSON file: {filepath.name}")
+                    load_file = str(filepath)
+                
+                # Load the data file (JSON or Parquet)
+                # The load_data_file method handles both formats and both crypto/stock data
+                results = loader.load_data_file(load_file)
+                
+                crypto_count = results.get('crypto_rows', 0)
+                stock_count = results.get('stock_rows', 0)
+                errors = results.get('errors', 0)
+                
+                if crypto_count > 0:
+                    logger.info(f"✅ Loaded {crypto_count} crypto records to Snowflake")
+                if stock_count > 0:
+                    logger.info(f"✅ Loaded {stock_count} stock records to Snowflake")
+                
+                total_loaded = crypto_count + stock_count
+                if total_loaded > 0:
+                    logger.info(f"✅ Snowflake data load completed successfully ({total_loaded} total records)")
+                    loader.disconnect()
+                    return True
+                else:
+                    logger.warning("No data was loaded to Snowflake")
+                    loader.disconnect()
+                    return False
+            else:
+                logger.warning("Failed to connect to Snowflake")
+                return False
+                
+        except ImportError as e:
+            logger.warning(f"Snowflake not enabled or dependencies missing: {e}")
+            logger.info("Skipping Snowflake load - pipeline will continue")
+            return False
+        except Exception as e:
+            logger.warning(f"Snowflake load error: {str(e)}")
+            logger.info("Pipeline will continue without Snowflake load")
+            import traceback
+            traceback.print_exc()
+            return False
         
     def analyze_data(self, filepath):
         """Perform technical analysis on collected data."""
@@ -220,10 +296,13 @@ class DailyDataPipeline:
             # Step 2: Store data (local/S3 based on config)
             upload_success = self.upload_to_s3(data_file)
             
-            # Step 3: Analyze data
+            # Step 3: Load to Snowflake
+            snowflake_success = self.load_to_snowflake(data_file)
+            
+            # Step 4: Analyze data
             analysis_file = self.analyze_data(data_file)
             
-            # Step 4: Cleanup old files
+            # Step 5: Cleanup old files
             self.cleanup_old_data()
             
             duration = datetime.now() - start_time
@@ -234,7 +313,8 @@ class DailyDataPipeline:
                 'duration': str(duration),
                 'data_file': str(data_file),
                 'analysis_file': str(analysis_file) if analysis_file else "Analysis skipped due to error",
-                'upload_success': upload_success
+                'upload_success': upload_success,
+                'snowflake_success': snowflake_success
             }
             
         except Exception as e:

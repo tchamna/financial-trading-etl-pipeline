@@ -93,12 +93,16 @@ def upload_minute_data_to_s3(filename=None):
         
         print(f"\n📄 Loaded: {filename}")
         
-        # Check if crypto_data exists
-        if 'crypto_data' not in data:
-            print(f"\n❌ No 'crypto_data' key found in {filename}")
+        # Check if crypto_data exists (support both old format with just crypto_data and new format with crypto_data + stock_data)
+        if 'crypto_data' not in data and 'stock_data' not in data:
+            print(f"\n[ERROR] No 'crypto_data' or 'stock_data' key found in {filename}")
             return None
             
-        print(f"📊 Records: {len(data['crypto_data'])}")
+        # Count records
+        crypto_count = len(data.get('crypto_data', []))
+        stock_count = len(data.get('stock_data', []))
+        total_count = crypto_count + stock_count
+        print(f"📊 Records: {total_count} (crypto: {crypto_count}, stock: {stock_count})")
         
         upload_results = {}
         
@@ -115,7 +119,8 @@ def upload_minute_data_to_s3(filename=None):
             )
             
             # Prepare data for upload
-            target_date = data.get('target_date', datetime.now().strftime('%Y-%m-%d'))
+            # Support both 'target_date' and 'collection_date' keys
+            target_date = data.get('target_date') or data.get('collection_date') or datetime.now().strftime('%Y-%m-%d')
             year, month, day = target_date.split('-')
             
             # Check if files already exist to avoid redundant uploads
@@ -218,6 +223,13 @@ def manage_local_storage(storage_config, data, filename):
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
+        # Add date and time columns for better querying and partitioning
+        df['date'] = df['timestamp'].dt.date  # Date only (YYYY-MM-DD)
+        df['time'] = df['timestamp'].dt.time  # Time only (HH:MM:SS)
+        df['hour'] = df['timestamp'].dt.hour  # Hour for additional partitioning
+        df['minute'] = df['timestamp'].dt.minute  # Minute for granular analysis
+        df['ingestion_timestamp'] = pd.Timestamp.now(tz='UTC')  # When data was processed
+        
         df.to_parquet(parquet_filename, compression='snappy')
         print(f"   📊 Saved Parquet: {parquet_filename} ({len(combined_data)} records)")
     
@@ -293,6 +305,13 @@ def upload_parquet_format(s3_client, crypto_data, bucket_name, year, month, day,
     for col in numeric_columns:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # Add date and time columns for better querying and partitioning
+    df['date'] = df['timestamp'].dt.date  # Date only (YYYY-MM-DD)
+    df['time'] = df['timestamp'].dt.time  # Time only (HH:MM:SS)
+    df['hour'] = df['timestamp'].dt.hour  # Hour for additional partitioning
+    df['minute'] = df['timestamp'].dt.minute  # Minute for granular analysis
+    df['ingestion_timestamp'] = pd.Timestamp.now(tz='UTC')  # When data was processed
     
     # Add partitioning columns
     df['year'] = df['timestamp'].dt.year

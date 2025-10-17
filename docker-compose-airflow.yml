@@ -51,7 +51,7 @@ x-airflow-common:
     - ./user_config.py:/opt/airflow/user_config.py
     - ./config.py:/opt/airflow/config.py
     - ./requirements.txt:/opt/airflow/requirements.txt
-  user: "${AIRFLOW_UID:-50000}:0"
+  user: "0:0"
   depends_on:
     &airflow-common-depends-on
     postgres:

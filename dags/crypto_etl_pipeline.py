@@ -6,8 +6,9 @@ This DAG orchestrates the complete ETL process:
 2. Upload to S3 as Parquet
 3. Load from S3 to Snowflake
 
-Schedule: Every 6 hours
-Start: 5 minutes from manual trigger
+Schedule: Every 2 hours
+Default Date: Previous day (execution_date)
+Data collected for: execution_date (automatically handled by Airflow)
 """
 from datetime import datetime, timedelta
 from airflow import DAG
@@ -40,10 +41,10 @@ dag = DAG(
     'financial_crypto_etl_pipeline',
     default_args=default_args,
     description='ETL pipeline for cryptocurrency minute data: API → S3 → Snowflake',
-    schedule_interval='0 */6 * * *',  # Every 6 hours at minute 0
-    start_date=datetime(2025, 10, 15, 4, 18),  # Start at 4:18 AM (5 minutes from now)
+    schedule_interval='0 */2 * * *',  # Every 2 hours at minute 00
+    start_date=datetime(2025, 10, 16, 0, 0),  # Start at midnight UTC
     catchup=False,  # Don't backfill historical runs
-    tags=['crypto', 'etl', 'financial', 's3', 'snowflake'],
+    tags=['crypto', 'etl', 'financial', 's3', 'snowflake', 'production'],
 )
 
 

@@ -29,6 +29,7 @@ from snowflake.connector import DictCursor
 from snowflake.connector.pandas_tools import write_pandas
 import boto3
 from botocore.exceptions import ClientError
+import time
 
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent))
@@ -128,6 +129,26 @@ class SnowflakeLoader:
             # Now use the warehouse
             self.cursor.execute(f"USE WAREHOUSE {self.warehouse}")
             
+            # Create database if it doesn't exist
+            try:
+                self.cursor.execute(f"""
+                    CREATE DATABASE IF NOT EXISTS {self.database}
+                    COMMENT = 'Financial trading data warehouse'
+                """)
+                logger.info(f"✅ Database {self.database} created/verified")
+            except Exception as e:
+                logger.warning(f"Database creation: {e}")
+            
+            # Use the database
+            self.cursor.execute(f"USE DATABASE {self.database}")
+            
+            # Create schema if it doesn't exist
+            self.create_schema_if_not_exists()
+            
+            # Create tables if they don't exist
+            self.create_crypto_table()
+            self.create_stock_table()
+            
             logger.info(f"✅ Connected to Snowflake: {self.database}.{self.schema}")
             return True
             
@@ -203,6 +224,12 @@ class SnowflakeLoader:
             symbol STRING NOT NULL,
             timestamp TIMESTAMP_NTZ NOT NULL,
             
+            -- Date and Time columns for better querying
+            date DATE,
+            time TIME,
+            hour INT,
+            minute INT,
+            
             -- Price data
             open_price DECIMAL(18,4),
             high_price DECIMAL(18,4),
@@ -227,12 +254,13 @@ class SnowflakeLoader:
             
             -- Metadata
             load_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+            ingestion_timestamp TIMESTAMP_TZ,
             source STRING DEFAULT 'ETL_PIPELINE',
             
             -- Primary key
             CONSTRAINT pk_stock_data PRIMARY KEY (symbol, timestamp)
         )
-        COMMENT = 'Historical stock market data with technical indicators'
+        COMMENT = 'Historical stock market data with technical indicators and date/time components'
         """
         
         self.execute_sql(sql)
@@ -281,6 +309,12 @@ class SnowflakeLoader:
             symbol STRING NOT NULL,
             timestamp TIMESTAMP_NTZ NOT NULL,
             
+            -- Date and Time columns for better querying
+            date DATE,
+            time TIME,
+            hour INT,
+            minute INT,
+            
             -- OHLCV data
             open DECIMAL(18,8),
             high DECIMAL(18,8),
@@ -292,11 +326,12 @@ class SnowflakeLoader:
             api_source STRING,
             interval STRING,
             load_timestamp TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
+            ingestion_timestamp TIMESTAMP_TZ,
             
             -- Primary key
             CONSTRAINT pk_crypto_minute_data PRIMARY KEY (symbol, timestamp)
         )
-        COMMENT = 'Minute-level cryptocurrency OHLCV data'
+        COMMENT = 'Minute-level cryptocurrency OHLCV data with date/time components'
         """
         
         self.execute_sql(sql_minute)
@@ -304,7 +339,7 @@ class SnowflakeLoader:
     
     def load_parquet_from_local(self, file_path: str, table_name: str) -> int:
         """
-        Load data from local Parquet file into Snowflake
+        Load data from local Parquet file into Snowflake (batched via write_pandas)
         
         Args:
             file_path: Path to Parquet file
@@ -314,6 +349,8 @@ class SnowflakeLoader:
             Number of rows loaded
         """
         try:
+            start_time = time.time()
+            
             # Read Parquet file
             df = pd.read_parquet(file_path)
             
@@ -321,11 +358,15 @@ class SnowflakeLoader:
                 logger.warning(f"No data in {file_path}")
                 return 0
             
+            nrows_total = len(df)
+            logger.info(f"📄 Read {nrows_total:,} rows from {file_path}")
+            
             # Convert timestamp columns to datetime
             if 'timestamp' in df.columns:
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
             
-            # Write to Snowflake using pandas
+            # Bulk write with explicit chunk size (16MB chunks, ~10k rows typical)
+            logger.info(f"📤 Uploading to {table_name} (batched)...")
             success, nchunks, nrows, _ = write_pandas(
                 conn=self.connection,
                 df=df,
@@ -333,11 +374,16 @@ class SnowflakeLoader:
                 database=self.database,
                 schema=self.schema,
                 auto_create_table=False,  # We already created the table
-                overwrite=False  # Append mode
+                overwrite=False,  # Append mode
+                chunk_size=10000  # Upload 10k rows per batch
             )
             
+            elapsed = time.time() - start_time
+            rate = nrows / elapsed if elapsed > 0 else 0
+            
             if success:
-                logger.info(f"✅ Loaded {nrows} rows from {file_path} to {table_name}")
+                logger.info(f"✅ Loaded {nrows:,} rows from {file_path} to {table_name}")
+                logger.info(f"   ⏱️  Time: {elapsed:.2f}s | Rate: {rate:,.0f} rows/sec | Chunks: {nchunks}")
                 return nrows
             else:
                 logger.error(f"❌ Failed to load {file_path}")
@@ -395,10 +441,10 @@ class SnowflakeLoader:
     
     def load_data_file(self, file_path: str) -> Dict[str, int]:
         """
-        Load data from a specific JSON file
+        Load data from a specific JSON file (batched via DataFrame + write_pandas)
         
         Args:
-            file_path: Path to JSON file containing crypto minute data
+            file_path: Path to JSON file containing crypto/stock minute data
             
         Returns:
             Dictionary with load statistics
@@ -414,111 +460,313 @@ class SnowflakeLoader:
         }
         
         try:
+            # Ensure connection is established
+            if not self.connection:
+                if not self.connect():
+                    logger.error("Failed to connect to Snowflake - cannot load data")
+                    stats['errors'] = 1
+                    return stats
+            
             file_path = Path(file_path)
+            start_time = time.time()
             
             if not file_path.exists():
                 logger.error(f"File not found: {file_path}")
                 stats['errors'] = 1
                 return stats
             
+            filename = file_path.name.lower()
+            
+            # Route to Parquet handler if Parquet file
+            if filename.endswith('.parquet'):
+                logger.info(f"📥 Detected Parquet file: {filename}")
+                try:
+                    df = pd.read_parquet(file_path)
+                    if df.empty:
+                        logger.warning(f"No data in {file_path}")
+                        return stats
+                    
+                    # Drop 'datetime' column if it exists (redundant with timestamp, and it's a reserved keyword)
+                    if 'datetime' in df.columns:
+                        df = df.drop('datetime', axis=1)
+                    
+                    logger.info(f"📄 Read {len(df):,} rows from {file_path}")
+                    logger.info(f"   Columns: {list(df.columns)}")
+                    
+                    # Convert timestamp columns
+                    if 'timestamp' in df.columns:
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                    
+                    # Use CRYPTO_MINUTE_DATA for Parquet files (more general table)
+                    # Or detect based on filename/content
+                    table_name = 'CRYPTO_MINUTE_DATA' if ('crypto' in filename or 'minute' in filename) else 'CRYPTO_MINUTE_DATA'
+                    
+                    rows_inserted = self._bulk_insert_dataframe(df, table_name)
+                    stats['crypto_rows'] += rows_inserted
+                    stats['files_processed'] = 1
+                    
+                    elapsed = time.time() - start_time
+                    logger.info(f"✅ Parquet file processed in {elapsed:.2f}s")
+                    return stats
+                except Exception as e:
+                    logger.error(f"Error loading Parquet file: {e}")
+                    stats['errors'] = 1
+                    return stats
+            
             # Load JSON data
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
-            # Handle both list and dict formats
-            if isinstance(data, list):
-                records = data
-            elif isinstance(data, dict) and 'data' in data:
-                records = data['data']
-            else:
-                records = [data]
-            
-            if not records:
-                logger.warning(f"No data found in {file_path}")
-                return stats
-            
-            # Determine if it's crypto or stock data based on filename or content
             filename = file_path.name.lower()
-            if 'crypto' in filename or 'minute' in filename:
-                # Use CRYPTO_MINUTE_DATA table for OHLCV minute data
-                table_name = 'CRYPTO_MINUTE_DATA'
-            else:
-                table_name = 'STOCK_DATA'
             
-            # Insert data
-            rows_inserted = 0
-            for i, record in enumerate(records):
-                try:
-                    # Skip non-dict records
-                    if not isinstance(record, dict):
-                        logger.warning(f"Skipping non-dict record at index {i}: {type(record)}")
-                        continue
-                    
-                    if table_name == 'CRYPTO_MINUTE_DATA':
-                        # Map JSON fields to crypto minute table columns
-                        row_data = {
-                            'symbol': record.get('symbol'),
-                            'timestamp': record.get('timestamp'),
-                            'open': float(record.get('open', 0)),
-                            'high': float(record.get('high', 0)),
-                            'low': float(record.get('low', 0)),
-                            'close': float(record.get('close', 0)),
-                            'volume': float(record.get('volume', 0)),
-                            'api_source': record.get('api_source'),
-                            'interval': record.get('interval')
-                        }
-                    else:
-                        # Map JSON fields to stock table columns
-                        row_data = {
-                            'symbol': record.get('symbol'),
-                            'timestamp': record.get('timestamp'),
-                            'open': float(record.get('open', 0)),
-                            'high': float(record.get('high', 0)),
-                            'low': float(record.get('low', 0)),
-                            'close': float(record.get('close', 0)),
-                            'volume': float(record.get('volume', 0))
-                        }
-                    
-                    # Prepare INSERT statement with proper Snowflake parameter binding
-                    columns = ', '.join(row_data.keys())
-                    placeholders = ', '.join([f'%({k})s' for k in row_data.keys()])
-                    sql = f"""
-                    INSERT INTO {self.database}.{self.schema}.{table_name}
-                    ({columns})
-                    VALUES ({placeholders})
-                    """
-                    
-                    self.cursor.execute(sql, row_data)
-                    rows_inserted += 1
-                    
-                    # Commit every 1000 rows to avoid transaction timeouts
-                    if rows_inserted % 1000 == 0:
-                        self.connection.commit()
-                        logger.info(f"   Loaded {rows_inserted} rows...")
-                    
-                except Exception as e:
-                    logger.error(f"Error inserting record at index {i}: {e}")
-                    if i < 3:  # Log first 3 failed records for debugging
-                        logger.error(f"   Record content: {record}")
-                    stats['errors'] += 1
-                    continue
-            
-            # Commit the transaction
-            self.connection.commit()
-            
-            if 'crypto' in filename:
-                stats['crypto_rows'] = rows_inserted
-            else:
-                stats['stock_rows'] = rows_inserted
+            # Process combined financial_minute_data structure (crypto_data + stock_data)
+            if isinstance(data, dict) and ('crypto_data' in data or 'stock_data' in data):
+                crypto_records = data.get('crypto_data', []) or []
+                stock_records = data.get('stock_data', []) or []
                 
+                # Load crypto data (batched)
+                if crypto_records:
+                    logger.info(f"📥 Processing {len(crypto_records):,} crypto records...")
+                    crypto_df = self._records_to_dataframe(
+                        crypto_records, 
+                        table_type='CRYPTO_MINUTE_DATA'
+                    )
+                    if not crypto_df.empty:
+                        rows_inserted = self._bulk_insert_dataframe(
+                            crypto_df, 
+                            'CRYPTO_MINUTE_DATA'
+                        )
+                        stats['crypto_rows'] += rows_inserted
+                
+                # Load stock data (batched)
+                if stock_records:
+                    logger.info(f"📥 Processing {len(stock_records):,} stock records...")
+                    stock_df = self._records_to_dataframe(
+                        stock_records, 
+                        table_type='STOCK_DATA'
+                    )
+                    if not stock_df.empty:
+                        rows_inserted = self._bulk_insert_dataframe(
+                            stock_df, 
+                            'STOCK_DATA'
+                        )
+                        stats['stock_rows'] += rows_inserted
+            else:
+                # Legacy structure handling
+                if isinstance(data, list):
+                    records = data
+                elif isinstance(data, dict) and 'data' in data:
+                    records = data['data']
+                else:
+                    records = [data]
+                
+                if not records:
+                    logger.warning(f"No data found in {file_path}")
+                    return stats
+                
+                # Heuristic: minute crypto files usually include 'minute' or 'crypto' in filename
+                table_name = 'CRYPTO_MINUTE_DATA' if ('crypto' in filename or 'minute' in filename) else 'STOCK_DATA'
+                logger.info(f"📥 Processing {len(records):,} {table_name} records...")
+                
+                df = self._records_to_dataframe(records, table_type=table_name)
+                if not df.empty:
+                    rows_inserted = self._bulk_insert_dataframe(df, table_name)
+                    if table_name == 'CRYPTO_MINUTE_DATA':
+                        stats['crypto_rows'] += rows_inserted
+                    else:
+                        stats['stock_rows'] += rows_inserted
+            
             stats['files_processed'] = 1
-            logger.info(f"✅ Loaded {rows_inserted} rows from {file_path}")
+            elapsed = time.time() - start_time
+            total_rows = stats['crypto_rows'] + stats['stock_rows']
+            rate = total_rows / elapsed if elapsed > 0 else 0
+            logger.info(f"✅ Loaded {total_rows:,} rows from {file_path} in {elapsed:.2f}s ({rate:,.0f} rows/sec)")
             
         except Exception as e:
             logger.error(f"Error loading file {file_path}: {e}")
             stats['errors'] += 1
         
         return stats
+    
+    def _records_to_dataframe(self, records: List[Dict], table_type: str) -> pd.DataFrame:
+        """
+        Convert a list of records to a properly typed DataFrame for bulk insert
+        
+        Args:
+            records: List of record dictionaries
+            table_type: Type of table ('CRYPTO_MINUTE_DATA' or 'STOCK_DATA')
+            
+        Returns:
+            pandas DataFrame ready for write_pandas
+        """
+        rows = []
+        for i, record in enumerate(records):
+            try:
+                if not isinstance(record, dict):
+                    logger.warning(f"Skipping non-dict record at index {i}")
+                    continue
+                
+                ts_value = record.get('datetime') or record.get('timestamp')
+                
+                if table_type == 'CRYPTO_MINUTE_DATA':
+                    row = {
+                        'SYMBOL': record.get('symbol'),
+                        'TIMESTAMP': ts_value,
+                        'OPEN': float(record.get('open', 0)),
+                        'HIGH': float(record.get('high', 0)),
+                        'LOW': float(record.get('low', 0)),
+                        'CLOSE': float(record.get('close', 0)),
+                        'VOLUME': float(record.get('volume', 0)),
+                        'API_SOURCE': record.get('api_source'),
+                        'INTERVAL': record.get('interval')
+                    }
+                else:  # STOCK_DATA
+                    row = {
+                        'SYMBOL': record.get('symbol'),
+                        'TIMESTAMP': ts_value,
+                        'OPEN': float(record.get('open', 0)),
+                        'HIGH': float(record.get('high', 0)),
+                        'LOW': float(record.get('low', 0)),
+                        'CLOSE': float(record.get('close', 0)),
+                        'VOLUME': float(record.get('volume', 0))
+                    }
+                
+                rows.append(row)
+            
+            except Exception as e:
+                logger.warning(f"Skipping record {i}: {e}")
+                if i < 3:
+                    logger.debug(f"   Record: {record}")
+                continue
+        
+        if not rows:
+            logger.warning(f"No valid records converted for {table_type}")
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(rows)
+        # Convert timestamp to datetime
+        if 'TIMESTAMP' in df.columns:
+            df['TIMESTAMP'] = pd.to_datetime(df['TIMESTAMP'], errors='coerce')
+        
+        logger.info(f"   ✓ Converted {len(df):,} records to DataFrame")
+        return df
+    
+    def _bulk_insert_direct(self, df: pd.DataFrame, table_name: str) -> int:
+        """
+        Bulk insert DataFrame directly using batch INSERT VALUES (bypasses S3 staging)
+        Used as fallback when write_pandas S3 staging fails
+        
+        Args:
+            df: DataFrame to insert
+            table_name: Target Snowflake table
+            
+        Returns:
+            Number of rows inserted
+        """
+        try:
+            if df.empty:
+                return 0
+            
+            start_time = time.time()
+            logger.info(f"   📤 Direct bulk inserting {len(df):,} rows to {table_name}...")
+            
+            # Convert datetime columns to strings for Snowflake
+            df_copy = df.copy()
+            for col in df_copy.columns:
+                if pd.api.types.is_datetime64_any_dtype(df_copy[col]):
+                    df_copy[col] = df_copy[col].astype(str)
+            
+            # Build multi-row INSERT with batched VALUES
+            # Use unquoted column names (converted to uppercase by Snowflake)
+            # They will map to uppercase table column names correctly
+            col_names = ', '.join(df_copy.columns)
+            total_inserted = 0
+            batch_size = 100  # Smaller batches for VALUES inserts
+            
+            cursor = self.connection.cursor()
+            
+            for batch_idx in range(0, len(df_copy), batch_size):
+                batch_df = df_copy.iloc[batch_idx:batch_idx+batch_size]
+                
+                # Build VALUES clause for this batch
+                rows_values = []
+                for _, row in batch_df.iterrows():
+                    row_values = ', '.join([
+                        f"'{str(val).replace(chr(39), chr(39)+chr(39))}'"  # Escape single quotes
+                        if pd.notna(val) and not isinstance(val, (int, float))
+                        else str(val) if pd.notna(val) else 'NULL'
+                        for val in row
+                    ])
+                    rows_values.append(f"({row_values})")
+                
+                values_clause = ', '.join(rows_values)
+                insert_sql = f"INSERT INTO {self.database}.{self.schema}.{table_name.upper()} ({col_names}) VALUES {values_clause}"
+                
+                # Debug: print first row SQL
+                if batch_idx == 0:
+                    first_sql = insert_sql[:200]  # First 200 chars
+                    logger.info(f"   DEBUG: SQL preview: {first_sql}...")
+                
+                cursor.execute(insert_sql)
+                total_inserted += len(batch_df)
+                logger.info(f"   ✓ Inserted batch: {batch_idx//batch_size + 1} ({len(batch_df)} rows)")
+            
+            self.connection.commit()
+            elapsed = time.time() - start_time
+            rate = total_inserted / elapsed if elapsed > 0 else 0
+            
+            logger.info(f"   ✅ Direct inserted {total_inserted:,} rows in {elapsed:.2f}s ({rate:,.0f} rows/sec)")
+            return total_inserted
+        
+        except Exception as e:
+            logger.warning(f"Direct insert failed: {e}")
+            return 0
+    
+    def _bulk_insert_dataframe(self, df: pd.DataFrame, table_name: str) -> int:
+        """
+        Bulk insert DataFrame into Snowflake using write_pandas (with fallback to direct insert)
+        
+        Args:
+            df: DataFrame to insert
+            table_name: Target Snowflake table
+            
+        Returns:
+            Number of rows inserted
+        """
+        try:
+            start_time = time.time()
+            logger.info(f"   📤 Bulk inserting {len(df):,} rows to {table_name}...")
+            
+            success, nchunks, nrows, _ = write_pandas(
+                conn=self.connection,
+                df=df,
+                table_name=table_name.upper(),
+                database=self.database,
+                schema=self.schema,
+                auto_create_table=False,
+                overwrite=False,
+                chunk_size=10000,  # 10k rows per batch
+                use_logical_type=True  # Handle timezone-aware datetimes correctly
+            )
+            
+            elapsed = time.time() - start_time
+            rate = nrows / elapsed if elapsed > 0 else 0
+            
+            if success:
+                logger.info(f"   ✅ Inserted {nrows:,} rows in {elapsed:.2f}s ({rate:,.0f} rows/sec) via {nchunks} batches")
+                return nrows
+            else:
+                logger.error(f"   ❌ write_pandas failed for {table_name}")
+                return 0
+        
+        except Exception as e:
+            logger.warning(f"write_pandas error (likely S3 cert issue): {e}")
+            logger.info("Attempting fallback direct INSERT method...")
+            try:
+                return self._bulk_insert_direct(df, table_name)
+            except Exception as e2:
+                logger.error(f"Direct insert also failed: {e2}")
+                return 0
     
     def load_latest_data(self, hours: int = 24) -> Dict[str, int]:
         """
