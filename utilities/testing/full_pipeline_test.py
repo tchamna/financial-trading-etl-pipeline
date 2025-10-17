@@ -341,7 +341,7 @@ def test_full_pipeline_status():
         import json
         
         # Load Snowflake config
-        with open('config.json', 'r', encoding='utf-8') as f:
+        with open('config/config.json', 'r', encoding='utf-8') as f:
             config_data = json.load(f)
         
         snowflake_config = config_data.get('snowflake', {})

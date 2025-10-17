@@ -548,7 +548,7 @@ class PipelineConfig:
     
     def __init__(self, config_file: Optional[str] = None):
         """Initialize configuration from file or environment variables"""
-        self.config_file = config_file or os.getenv('PIPELINE_CONFIG_FILE', 'config.json')
+        self.config_file = config_file or os.getenv('PIPELINE_CONFIG_FILE', 'config/config.json')
         
         # Initialize all configuration sections
         self.storage = StorageConfig()
@@ -574,7 +574,7 @@ class PipelineConfig:
     def load_user_config(self):
         """Load user-friendly configuration from user_config.py"""
         try:
-            from user_config import get_user_config
+            from config.user import get_user_config
             user_config = get_user_config()
             
             # Apply user config to relevant sections

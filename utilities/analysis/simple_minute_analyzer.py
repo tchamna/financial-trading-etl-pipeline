@@ -250,14 +250,14 @@ class SimpleMinuteAnalyzer:
             
         return signals
         
-    def generate_comprehensive_report(self) -> Dict:
+    def run_comprehensive_analysis(self) -> Dict:
         """Generate comprehensive analysis report"""
         
         print("📋 Generating comprehensive minute-level analysis...")
         
         report = {
             'analysis_timestamp': datetime.now().isoformat(),
-            'data_date': self.data['target_date'],
+            'data_date': self.data['collection_date'],
             'total_minutes_analyzed': len(self.data['crypto_data']),
             'symbols': list(self.symbol_data.keys()),
             'symbol_analysis': {}

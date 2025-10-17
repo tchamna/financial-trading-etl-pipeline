@@ -46,7 +46,7 @@ def main():
     
     # Update config.json
     import json
-    config_path = Path(__file__).parent.parent.parent / "config.json"
+    config_path = Path(__file__).parent.parent.parent / "config/config.json"
     
     try:
         with open(config_path, 'r') as f:

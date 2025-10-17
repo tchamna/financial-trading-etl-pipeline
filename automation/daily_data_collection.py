@@ -244,7 +244,7 @@ class DailyDataPipeline:
             analyzer = SimpleMinuteAnalyzer(str(filepath))
             
             # Generate analysis report
-            analysis_results = analyzer.comprehensive_analysis()
+            analysis_results = analyzer.run_comprehensive_analysis()
             
             # Save analysis report
             yesterday = datetime.now() - timedelta(days=1)

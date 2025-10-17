@@ -160,37 +160,41 @@ cp config.example.json config.json
 
 ### Usage
 
-#### Option 1: Collect Data for Specific Date
+#### Run the End-to-End Pipeline
+
+The most reliable way to run the entire pipeline is to use the manual execution script. This script simulates the daily automated run, performing all steps from data collection to storage and analysis.
 
 ```bash
-# Collect data for any past date
+# Run the full end-to-end pipeline for yesterday's data
+python automation/run_manual.py
+```
+
+This command will:
+1.  Collect the latest stock and crypto data.
+2.  Save the data locally to the `data/` directory in both JSON and Parquet formats.
+3.  Upload the data to your configured S3 bucket.
+4.  Attempt to load the data into Snowflake (if enabled).
+5.  Run a final technical analysis.
+
+#### Collect Data for a Specific Date
+
+You can also run the collection for any specific past date.
+
+```bash
+# Collect data for a specific date (YYYY-MM-DD)
 python automation/daily_data_collection.py 2025-10-13
 
-# Or using flag
+# Or using the --date flag
 python automation/daily_data_collection.py --date 2025-10-13
-
-# Or with short flag
-python automation/daily_data_collection.py -d 2025-10-13
-
-# Collect data for yesterday (default)
-python automation/daily_data_collection.py
 ```
 
-#### Option 2: Test the Pipeline
+#### Test the Pipeline
+
+To verify all components without running a full data collection, use the comprehensive test suite.
 
 ```bash
-# Run comprehensive pipeline test
+# Run the full pipeline test suite
 python utilities/testing/full_pipeline_test.py
-
-# Test Parquet creation and S3 upload
-python utilities/testing/test_parquet_s3.py
-```
-
-#### Option 3: Standalone Collection
-
-```bash
-# Collect data without S3 upload
-python scripts/crypto_minute_collector.py 2025-10-13
 ```
 
 ---

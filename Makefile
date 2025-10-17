@@ -91,7 +91,7 @@ quality: ## Run all quality checks
 # ================================
 docker-up: ## Start Docker services
 	@echo "🐳 Starting Docker services..."
-	docker-compose up -d
+	docker-compose -f docker/docker-compose.yml up -d
 	@echo "✅ Services started. Access:"
 	@echo "   📊 Jupyter: http://localhost:8888"
 	@echo "   🗄️ PostgreSQL: localhost:5433"
@@ -99,11 +99,11 @@ docker-up: ## Start Docker services
 
 docker-down: ## Stop Docker services
 	@echo "🛑 Stopping Docker services..."
-	docker-compose down
+	docker-compose -f docker/docker-compose.yml down
 
 docker-clean: ## Clean Docker resources
 	@echo "🧹 Cleaning Docker resources..."
-	docker-compose down -v
+	docker-compose -f docker/docker-compose.yml down -v
 	docker system prune -f
 
 # ================================
