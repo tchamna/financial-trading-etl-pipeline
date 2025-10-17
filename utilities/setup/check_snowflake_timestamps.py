@@ -11,7 +11,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-from config import PipelineConfig
+from config import get_config
 import snowflake.connector
 
 def check_timestamps():
@@ -21,7 +21,7 @@ def check_timestamps():
     print("=" * 80)
     
     # Load configuration
-    config = PipelineConfig()
+    config = get_config()
     sf_config = config.snowflake
     
     # Connect to Snowflake

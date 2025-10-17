@@ -17,16 +17,10 @@ import os
 
 # Add parent directory to path to import config
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from config import PipelineConfig
+from config import get_config
 
 # Initialize pipeline configuration
-pipeline_config = PipelineConfig()
-import os
-
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from config import get_config
+pipeline_config = get_config()
 
 
 def get_binance_minute_data(symbol: str, target_date: str):

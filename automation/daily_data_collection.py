@@ -19,7 +19,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from config import PipelineConfig
+from config import get_config, PipelineConfig
 from scripts.crypto_minute_collector import collect_multi_source_crypto_minutes
 from scripts.reliable_stock_collector import collect_stock_minute_data_reliable
 from scripts.upload_minute_data import upload_minute_data_to_s3
@@ -42,7 +42,7 @@ class DailyDataPipeline:
     
     def __init__(self):
         """Initialize the pipeline with configuration."""
-        self.config = PipelineConfig()
+        self.config = get_config()
         self.data_dir = Path("data")
         self.data_dir.mkdir(exist_ok=True)
         
@@ -177,7 +177,7 @@ class DailyDataPipeline:
         
         try:
             # Check if Snowflake is enabled
-            from user_config import ENABLE_SNOWFLAKE
+            from config.user import ENABLE_SNOWFLAKE
             if not ENABLE_SNOWFLAKE:
                 logger.info("Snowflake loading is disabled in user_config.py")
                 return False

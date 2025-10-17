@@ -66,18 +66,12 @@ class SnowflakeLoader:
         
         # User preferences from user_config.py
         try:
-            from user_config import (
-                ENABLE_SNOWFLAKE,
-                SNOWFLAKE_WAREHOUSE,
-                SNOWFLAKE_DATABASE,
-                SNOWFLAKE_SCHEMA
-            )
-            self.enabled = ENABLE_SNOWFLAKE
-            self.warehouse = SNOWFLAKE_WAREHOUSE
-            self.database = SNOWFLAKE_DATABASE
-            self.schema = SNOWFLAKE_SCHEMA
-        except ImportError:
-            logger.warning("Snowflake settings not found in user_config.py, using defaults")
+            self.enabled = self.config.snowflake.enabled
+            self.warehouse = self.config.snowflake.warehouse
+            self.database = self.config.snowflake.database
+            self.schema = self.config.snowflake.schema
+        except AttributeError:
+            logger.warning("Snowflake settings not found in configuration, using defaults")
             self.enabled = False
             self.warehouse = "FINANCIAL_WH"
             self.database = "FINANCIAL_DB"

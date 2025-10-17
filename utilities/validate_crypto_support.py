@@ -9,7 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import CryptoMappingConfig
-from user_config import get_user_config
+from config.user import get_user_config
 
 def validate_crypto_selection():
     """Validate current cryptocurrency selection in user_config.py"""

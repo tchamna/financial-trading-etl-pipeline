@@ -19,10 +19,10 @@ import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.utils.dates import days_ago
-from airflow.operators.python_operator import PythonOperator
-from airflow.operators.bash_operator import BashOperator
-from airflow.operators.dummy_operator import DummyOperator
-from airflow.operators.email_operator import EmailOperator
+from airflow.operators.python import PythonOperator
+from airflow.operators.bash import BashOperator
+from airflow.operators.dummy import DummyOperator
+from airflow.operators.email import EmailOperator
 
 # Add parent directory to path for configuration import
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

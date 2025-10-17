@@ -35,6 +35,7 @@ except NameError:
 sys.path.insert(0, str(project_root))
 
 from config import get_config
+from scripts import crypto_minute_collector, snowflake_data_loader
 
 
 def print_section(title):
@@ -97,11 +98,8 @@ def test_data_collection():
     
     try:
         # Import and run the collector
-        sys.path.append(str(project_root / 'scripts'))
-        from crypto_minute_collector import main as collect_data
-        
         print("\n🔄 Collecting data...")
-        collect_data()
+        crypto_minute_collector.main()
         
         print("✅ Data collection complete!")
         return True
@@ -295,21 +293,50 @@ def test_s3_upload():
         return False
 
 
-def test_snowflake():
-    """Test 5: Snowflake integration"""
-    print_section("TEST 5: SNOWFLAKE INTEGRATION")
+def test_snowflake_loading():
+    """Test 5: Snowflake loading"""
+    print_section("TEST 5: SNOWFLAKE LOADING")
     
     try:
-        from user_config import ENABLE_SNOWFLAKE
+        config = get_config()
+        if not config.snowflake.enabled:
+            print("✅ Snowflake is disabled in user_config.py - SKIPPING TEST")
+            return True
+    except (ImportError, AttributeError):
+        print("✅ Snowflake is disabled - SKIPPING TEST")
+        return True
         
-        if not ENABLE_SNOWFLAKE:
-            print("⚠️  Snowflake is disabled in user_config.py")
-            print("   Set ENABLE_SNOWFLAKE = True to enable Snowflake integration")
-            return True  # Not a failure, just skipped
+    print("\n❄️  Running Snowflake loader...")
+    
+    try:
+        # Import and run the loader
+        print("\n🔄 Loading data into Snowflake...")
+        snowflake_data_loader.main()
         
-        print("🏔️  Snowflake is enabled!")
-        print("\n🔍 Testing Snowflake connection...")
+        print("✅ Snowflake loading complete!")
+        return True
         
+    except Exception as e:
+        print(f"❌ Snowflake loading failed: {e}")
+        return False
+
+
+def test_full_pipeline_status():
+    """Test 6: Full pipeline status check"""
+    print_section("TEST 6: FULL PIPELINE STATUS CHECK")
+    
+    try:
+        config = get_config()
+        if not config.snowflake.enabled:
+            print("✅ Snowflake is disabled - SKIPPING TEST")
+            return True
+    except (ImportError, AttributeError):
+        print("✅ Snowflake is disabled - SKIPPING TEST")
+        return True
+        
+    print("\n🔍 Verifying data in Snowflake...")
+    
+    try:
         import snowflake.connector
         import json
         
@@ -371,14 +398,10 @@ def test_pipeline_flow():
     else:
         print("   3. S3 Upload       ──→ [Disabled]")
     
-    try:
-        from user_config import ENABLE_SNOWFLAKE
-        if ENABLE_SNOWFLAKE:
-            print("   4. Snowflake Load  ──→ FINANCIAL_DB.CORE")
-        else:
-            print("   4. Snowflake Load  ──→ [Disabled]")
-    except ImportError:
-        print("   4. Snowflake Load  ──→ [Not Configured]")
+    if config.snowflake.enabled:
+        print("   4. Snowflake Load  ──→ FINANCIAL_DB.CORE")
+    else:
+        print("   4. Snowflake Load  ──→ [Disabled]")
     
     print("\n📊 Data Formats:")
     if config.storage.save_json_format:
@@ -403,7 +426,7 @@ def main():
         "Data Collection": test_data_collection(),
         "Data Files": test_data_files(),
         "S3 Upload": test_s3_upload(),
-        "Snowflake": test_snowflake(),
+        "Snowflake": test_snowflake_loading(),
         "Pipeline Flow": test_pipeline_flow()
     }
     

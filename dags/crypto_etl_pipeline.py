@@ -21,8 +21,13 @@ from pathlib import Path
 
 # Add project root to path (works both locally and in Docker)
 project_root = Path('/opt/airflow')  # Docker Airflow path
+sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / 'scripts'))
 sys.path.insert(0, str(project_root / 'automation'))
+
+from automation import daily_data_collection
+from scripts import snowflake_data_loader
+from config import get_config
 
 # Default arguments for the DAG
 default_args = {
@@ -71,17 +76,14 @@ def collect_crypto_data(**context):
     try:
         # Force reload of the module to pick up any code changes
         import importlib
-        import daily_data_collection
         importlib.reload(daily_data_collection)
-        
-        from daily_data_collection import main as collect_data
         
         # Override sys.argv to pass date argument
         original_argv = sys.argv
         sys.argv = ['daily_data_collection.py', execution_date]
         
         # Run the collection
-        collect_data()
+        daily_data_collection.main()
         
         # Restore original argv
         sys.argv = original_argv
@@ -191,8 +193,7 @@ def load_to_snowflake(**context):
         sys.path.insert(0, '/opt/airflow')
         
         # Check if Snowflake is configured
-        from config import PipelineConfig
-        config = PipelineConfig()
+        config = get_config()
         
         if not hasattr(config, 'snowflake') or not hasattr(config.snowflake, 'account') or not config.snowflake.account:
             print("ℹ️  Snowflake not configured - skipping data load")
@@ -201,10 +202,7 @@ def load_to_snowflake(**context):
         print("📥 Loading data from S3 to Snowflake")
         
         # Import and run the Snowflake loader
-        sys.path.append(str(project_root / 'scripts'))
-        from snowflake_data_loader import SnowflakeLoader
-        
-        loader = SnowflakeLoader()
+        loader = snowflake_data_loader.SnowflakeLoader()
         loader.connect()
         
         # Load latest data from S3
@@ -238,19 +236,15 @@ def verify_snowflake_data(**context):
     
     try:
         # Check if Snowflake is configured
-        from config import PipelineConfig
-        config = PipelineConfig()
+        config = get_config()
         
         if not hasattr(config, 'snowflake') or not config.snowflake.get('account'):
             print("ℹ️  Snowflake not configured - skipping verification")
             return {'status': 'skipped', 'reason': 'not_configured'}
         
-        sys.path.append(str(project_root / 'scripts'))
-        from snowflake_data_loader import SnowflakeLoader
-        
         print("🔍 Verifying data in Snowflake")
         
-        loader = SnowflakeLoader()
+        loader = snowflake_data_loader.SnowflakeLoader()
         loader.connect()
         
         # Get row count
@@ -290,6 +284,8 @@ def verify_snowflake_data(**context):
         print(f"⚠️ Snowflake verification error: {e}")
         print("ℹ️  Skipping Snowflake verification - pipeline will continue")
         return {'status': 'skipped', 'reason': str(e)}
+
+
 def send_success_notification(**context):
     """
     Task 5: Send success notification
