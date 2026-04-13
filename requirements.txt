@@ -80,7 +80,7 @@ pytz==2023.3.post1                 # Timezone handling
 # ================================
 # 🧪 TESTING & DEVELOPMENT (Optional)
 # ================================
-pytest==7.4.4                      # Testing framework
+pytest==9.0.3                      # Testing framework
 pytest-cov==4.1.0                  # Coverage reporting
 black==23.12.1                     # Code formatting
 flake8==7.0.0                      # Code linting
