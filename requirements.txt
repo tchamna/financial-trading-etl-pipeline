@@ -65,7 +65,7 @@ structlog==23.2.0                  # Advanced logging
 # ================================
 # ⚙️ CONFIGURATION & SECURITY
 # ================================
-python-dotenv==1.0.0               # Environment variables
+python-dotenv==1.2.2               # Environment variables
 pyyaml==6.0.1                      # YAML configuration
 cryptography==41.0.7               # Security & encryption (latest supporting Python 3.11)
 
