@@ -7,7 +7,7 @@
 # 🚀 CORE ETL FRAMEWORK
 # ================================
 apache-airflow==2.8.0              # Workflow orchestration
-pyspark==3.5.0                     # Big data processing
+pyspark==3.5.2                     # Big data processing
 pandas==2.1.4                      # Data manipulation
 numpy==1.25.2                      # Numerical computing
 pyarrow==14.0.1                    # Columnar data format
