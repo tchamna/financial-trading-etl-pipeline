@@ -6,7 +6,7 @@
 # ================================
 # 📊 DATA ANALYSIS & VISUALIZATION
 # ================================
-jupyterlab==4.0.9                  # Interactive notebooks
+jupyterlab==4.5.9                  # Interactive notebooks
 matplotlib==3.8.2                  # Basic plotting
 seaborn==0.13.0                    # Statistical visualization
 plotly==5.17.0                     # Interactive charts
